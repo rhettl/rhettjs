@@ -67,6 +67,9 @@ dependencies {
     // JSON5 parser (shaded into jar)
     shade("de.marhali:json5-java:3.0.0")
 
+    // Rhino JavaScript engine (shaded into jar)
+    shade("org.mozilla:rhino:1.8.1")
+
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
@@ -95,7 +98,10 @@ tasks.shadowJar {
     archiveClassifier.set("dev-shadow")
 
     // Relocate JSON5 to avoid conflicts with other mods
-    relocate("de.marhali.json5", "com.rhett.cobbledollarsmarket.shadow.json5")
+    relocate("de.marhali.json5", "com.rhett.rhettjs.shadow.json5")
+
+    // Don't relocate Rhino - it uses dynamic class loading that breaks with relocation
+    // Conflicts are unlikely since Rhino isn't common in Minecraft mods
 }
 
 tasks.remapJar {

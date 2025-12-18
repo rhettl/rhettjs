@@ -94,13 +94,13 @@ tasks.shadowJar {
     exclude("fabric.mod.json")
     exclude("architectury.common.json")
     // Exclude common mixin config - we use NeoForge-specific one without refmap
-    exclude("cobbledollars_market.mixins.json")
-    exclude("cobbledollars-market-common-refmap.json")
+    exclude("rhettjs.mixins.json")
+    exclude("rhettjs-common-refmap.json")
     configurations = listOf(shadowCommon, shade)
     archiveClassifier.set("dev-shadow")
 
     // Relocate JSON5 to avoid conflicts with other mods
-    relocate("de.marhali.json5", "com.rhett.cobbledollarsmarket.shadow.json5")
+    relocate("de.marhali.json5", "com.rhett.rhettjs.shadow.json5")
 }
 
 tasks.remapJar {

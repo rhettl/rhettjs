@@ -1,0 +1,128 @@
+package com.rhett.rhettjs.util
+
+import net.minecraft.nbt.*
+import org.mozilla.javascript.*
+
+/**
+ * Utility for converting between Minecraft NBT and JavaScript objects.
+ */
+object NBTConverter {
+
+    /**
+     * Convert an NBT element to a JavaScript value.
+     *
+     * @param nbt The NBT element to convert
+     * @param scope The JavaScript scope for creating objects
+     * @return JavaScript representation of the NBT data
+     */
+    fun nbtToJS(nbt: NbtElement, scope: Scriptable): Any {
+        val cx = Context.getCurrentContext()
+
+        return when (nbt) {
+            is NbtCompound -> {
+                val obj = cx.newObject(scope)
+                nbt.keys.forEach { key ->
+                    ScriptableObject.putProperty(obj, key, nbtToJS(nbt.get(key)!!, scope))
+                }
+                obj
+            }
+
+            is NbtList -> {
+                val array = cx.newArray(scope, nbt.size)
+                nbt.forEachIndexed { index, element ->
+                    array.put(index, array, nbtToJS(element, scope))
+                }
+                array
+            }
+
+            is NbtString -> nbt.asString()
+            is NbtInt -> nbt.intValue()
+            is NbtLong -> nbt.longValue()
+            is NbtDouble -> nbt.doubleValue()
+            is NbtFloat -> nbt.floatValue()
+            is NbtShort -> nbt.shortValue()
+            is NbtByte -> nbt.byteValue() == 1.toByte()
+            is NbtIntArray -> {
+                val array = cx.newArray(scope, nbt.size())
+                nbt.intArray.forEachIndexed { index, value ->
+                    array.put(index, array, value)
+                }
+                array
+            }
+
+            is NbtLongArray -> {
+                val array = cx.newArray(scope, nbt.size())
+                nbt.longArray.forEachIndexed { index, value ->
+                    array.put(index, array, value)
+                }
+                array
+            }
+
+            is NbtByteArray -> {
+                val array = cx.newArray(scope, nbt.size())
+                nbt.byteArray.forEachIndexed { index, value ->
+                    array.put(index, array, value.toInt())
+                }
+                array
+            }
+
+            else -> Undefined.instance
+        }
+    }
+
+    /**
+     * Convert a JavaScript value to an NBT element.
+     *
+     * @param obj The JavaScript value to convert
+     * @return NBT representation of the JavaScript data
+     */
+    fun jsToNBT(obj: Any?): NbtElement {
+        return when (obj) {
+            null, is Undefined -> NbtCompound()
+            is String -> NbtString.of(obj)
+            is Number -> {
+                when {
+                    obj is Double || obj is Float -> NbtDouble.of(obj.toDouble())
+                    obj is Long -> NbtLong.of(obj.toLong())
+                    else -> NbtInt.of(obj.toInt())
+                }
+            }
+
+            is Boolean -> NbtByte.of(obj)
+            is Scriptable -> {
+                if (obj is NativeArray || obj.has("length", obj)) {
+                    // It's an array-like object
+                    val list = NbtList()
+                    val length = if (obj is NativeArray) {
+                        obj.length.toInt()
+                    } else {
+                        ScriptableObject.getProperty(obj, "length") as? Int ?: 0
+                    }
+
+                    for (i in 0 until length) {
+                        val element = obj.get(i, obj)
+                        if (element != Scriptable.NOT_FOUND) {
+                            list.add(jsToNBT(element))
+                        }
+                    }
+                    list
+                } else {
+                    // It's an object
+                    val compound = NbtCompound()
+                    val ids = obj.ids
+
+                    for (id in ids) {
+                        val key = id.toString()
+                        val value = obj.get(key, obj)
+                        if (value != Scriptable.NOT_FOUND && value !is BaseFunction) {
+                            compound.put(key, jsToNBT(value))
+                        }
+                    }
+                    compound
+                }
+            }
+
+            else -> NbtString.of(obj.toString())
+        }
+    }
+}

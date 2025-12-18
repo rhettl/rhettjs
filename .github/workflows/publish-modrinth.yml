@@ -58,12 +58,12 @@ jobs:
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           # TODO: Update modrinth-id after creating project on Modrinth
-          modrinth-id: cobbledollars-market
+          modrinth-id: rhettjs
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
 
           files: artifacts/*-neoforge.jar
 
-          name: CobbleDollars Market ${{ steps.version.outputs.version }}
+          name: RhettJS ${{ steps.version.outputs.version }}
           version: ${{ steps.version.outputs.version }}-neoforge
           version-type: beta
           changelog: ${{ steps.release.outputs.body }}
@@ -73,7 +73,6 @@ jobs:
 
           # No architectury-api dependency (using plugin only)
           dependencies: |
-            cobblemon(required)
 
           fail-mode: warn
 
@@ -82,12 +81,12 @@ jobs:
         uses: Kir-Antipov/mc-publish@v3.3
         with:
           # TODO: Update modrinth-id after creating project on Modrinth
-          modrinth-id: cobbledollars-market
+          modrinth-id: rhettjs
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
 
           files: artifacts/*-fabric.jar
 
-          name: CobbleDollars Market ${{ steps.version.outputs.version }}
+          name: RhettJS ${{ steps.version.outputs.version }}
           version: ${{ steps.version.outputs.version }}-fabric
           version-type: beta
           changelog: ${{ steps.release.outputs.body }}
@@ -97,7 +96,6 @@ jobs:
 
           # fabric-language-kotlin required for Kotlin mods
           dependencies: |
-            cobblemon(required)
             fabric-api(required)
             fabric-language-kotlin(required)
 

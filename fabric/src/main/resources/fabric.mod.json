@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "id": "cobbledollarsmarket",
+  "id": "rhettjs",
   "version": "${mod_version}",
-  "name": "CobbleDollars Market",
-  "description": "A market system for CobbleDollars economy.",
+  "name": "RhettJS",
+  "description": "JavaScript scripting engine for Fabric Minecraft servers",
   "authors": [
     "Rhett"
   ],
   "contact": {
-    "sources": "https://github.com/RhettL/cobbledollars-market"
+    "sources": "https://github.com/RhettL/RhettJS"
   },
   "license": "MIT",
   "icon": "icon.png",
@@ -17,12 +17,12 @@
     "main": [
       {
         "adapter": "kotlin",
-        "value": "com.rhett.cobbledollarsmarket.CobbleDollarsMarketFabric"
+        "value": "com.rhett.rhettjs.RhettJSFabric"
       }
     ]
   },
   "mixins": [
-    "cobbledollars_market.mixins.json"
+    "rhettjs.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.15.0",

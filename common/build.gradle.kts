@@ -35,6 +35,9 @@ dependencies {
     // JSON5 parser
     implementation("de.marhali:json5-java:3.0.0")
 
+    // Rhino JavaScript engine
+    implementation("org.mozilla:rhino:1.8.1")
+
     // JUnit 5 for testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
@@ -61,7 +64,7 @@ tasks.test {
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-        showStandardStreams = false
+        showStandardStreams = true
     }
 
     // Fail fast in CI

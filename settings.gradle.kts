@@ -30,4 +30,4 @@ stonecutter {
     }
 }
 
-rootProject.name = "cobbledollars-market"
+rootProject.name = "rhettjs"

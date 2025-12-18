@@ -1,8 +1,7 @@
 {
   "required": true,
-  "package": "com.rhett.cobbledollarsmarket.mixin",
+  "package": "com.rhett.rhettjs.mixin",
   "compatibilityLevel": "JAVA_21",
-  "refmap": "cobbledollars-market-common-refmap.json",
   "mixins": [],
   "injectors": {
     "defaultRequire": 1

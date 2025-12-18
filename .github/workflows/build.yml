@@ -44,7 +44,7 @@ jobs:
     - name: Upload NeoForge JAR
       uses: actions/upload-artifact@v4
       with:
-        name: cobbledollars-market-neoforge
+        name: rhettjs-neoforge
         path: |
           neoforge/build/libs/*-neoforge.jar
           !neoforge/build/libs/*-dev*.jar
@@ -53,7 +53,7 @@ jobs:
     - name: Upload Fabric JAR
       uses: actions/upload-artifact@v4
       with:
-        name: cobbledollars-market-fabric
+        name: rhettjs-fabric
         path: |
           fabric/build/libs/*-fabric.jar
           !fabric/build/libs/*-dev*.jar

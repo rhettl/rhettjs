@@ -1,0 +1,183 @@
+package com.rhett.rhettjs.api
+
+import com.rhett.rhettjs.RhettJSCommon
+import com.rhett.rhettjs.util.NBTConverter
+import net.minecraft.nbt.NbtCompound
+import net.minecraft.nbt.NbtElement
+import net.minecraft.nbt.NbtIo
+import org.mozilla.javascript.Context
+import org.mozilla.javascript.Scriptable
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlin.io.path.*
+
+/**
+ * NBT API for JavaScript scripts.
+ * Provides file operations for reading and writing NBT files.
+ * Available in all contexts (main thread, workers).
+ */
+class NBTAPI(private val baseDir: Path) {
+
+    /**
+     * Read a structure NBT file and convert to JavaScript object.
+     *
+     * @param path Relative path within the structures directory
+     * @return JavaScript object representation of the NBT data
+     */
+    fun readStructure(path: String): Any {
+        val file = validatePath(path)
+
+        if (!file.exists()) {
+            throw IllegalArgumentException("Structure file not found: $path")
+        }
+
+        return try {
+            val nbt = NbtIo.readCompressed(file.toFile().inputStream(), null)
+            val cx = Context.getCurrentContext()
+            val scope = cx.initStandardObjects()
+            NBTConverter.nbtToJS(nbt, scope)
+        } catch (e: Exception) {
+            RhettJSCommon.LOGGER.error("[RhettJS] Failed to read structure: $path", e)
+            throw e
+        }
+    }
+
+    /**
+     * Write a structure NBT file, creating automatic backup of existing file.
+     *
+     * @param path Relative path within the structures directory
+     * @param data JavaScript object to convert to NBT
+     */
+    fun writeStructure(path: String, data: Any) {
+        val file = validatePath(path)
+
+        // Create timestamped backup if file exists
+        if (file.exists()) {
+            createBackup(file)
+        }
+
+        try {
+            // Convert JS object to NBT
+            val nbt = NBTConverter.jsToNBT(data)
+
+            // Ensure parent directory exists
+            file.parent?.let { Files.createDirectories(it) }
+
+            // Write to temporary file first
+            val tempFile = file.resolveSibling("${file.name}.tmp")
+            NbtIo.writeCompressed(nbt as NbtCompound, tempFile.toFile().outputStream())
+
+            // Verify the written file is readable
+            NbtIo.readCompressed(tempFile.toFile().inputStream(), null)
+
+            // Move temp file to final location
+            Files.move(tempFile, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+
+            RhettJSCommon.LOGGER.info("[RhettJS] Wrote structure: $path")
+
+        } catch (e: Exception) {
+            RhettJSCommon.LOGGER.error("[RhettJS] Failed to write structure: $path", e)
+            throw e
+        }
+    }
+
+    /**
+     * List backups for a specific file.
+     *
+     * @param path Relative path within the structures directory
+     * @return Array of backup filenames
+     */
+    fun listBackups(path: String): Array<String> {
+        val file = validatePath(path)
+        val backupPattern = "${file.nameWithoutExtension}.*\\.bak"
+
+        return file.parent?.listDirectoryEntries()
+            ?.filter { it.name.matches(Regex(backupPattern)) }
+            ?.map { it.name }
+            ?.toTypedArray()
+            ?: emptyArray()
+    }
+
+    /**
+     * Restore a specific backup.
+     *
+     * @param path Relative path within the structures directory
+     * @param backupName Name of the backup file to restore
+     */
+    fun restoreBackup(path: String, backupName: String) {
+        val file = validatePath(path)
+        val backupFile = file.resolveSibling(backupName)
+
+        if (!backupFile.exists()) {
+            throw IllegalArgumentException("Backup not found: $backupName")
+        }
+
+        try {
+            // Create a backup of the current file before restoring
+            if (file.exists()) {
+                createBackup(file)
+            }
+
+            Files.copy(backupFile, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            RhettJSCommon.LOGGER.info("[RhettJS] Restored backup: $backupName -> $path")
+
+        } catch (e: Exception) {
+            RhettJSCommon.LOGGER.error("[RhettJS] Failed to restore backup: $backupName", e)
+            throw e
+        }
+    }
+
+    /**
+     * Restore the most recent backup.
+     *
+     * @param path Relative path within the structures directory
+     */
+    fun restoreLatest(path: String) {
+        val backups = listBackups(path).sortedDescending()
+        if (backups.isEmpty()) {
+            throw IllegalArgumentException("No backups found for: $path")
+        }
+
+        restoreBackup(path, backups[0])
+    }
+
+    /**
+     * Validate and resolve a path, ensuring it's within the base directory.
+     *
+     * @param path Relative path to validate
+     * @return Resolved absolute path
+     * @throws SecurityException if path traversal is attempted
+     */
+    private fun validatePath(path: String): Path {
+        // Reject path traversal attempts
+        if (path.contains("..")) {
+            throw SecurityException("Path traversal not allowed: $path")
+        }
+
+        val resolved = baseDir.resolve(path).normalize()
+
+        // Ensure result is within base directory
+        if (!resolved.startsWith(baseDir)) {
+            throw SecurityException("Path must be within base directory: $path")
+        }
+
+        return resolved
+    }
+
+    /**
+     * Create a timestamped backup of a file.
+     *
+     * @param file The file to backup
+     */
+    private fun createBackup(file: Path) {
+        val timestamp = LocalDateTime.now()
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+        val backupName = "${file.nameWithoutExtension}.$timestamp.bak"
+        val backupFile = file.resolveSibling(backupName)
+
+        Files.copy(file, backupFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        RhettJSCommon.LOGGER.info("[RhettJS] Created backup: $backupName")
+    }
+}
