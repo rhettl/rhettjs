@@ -236,8 +236,19 @@ class StructureAPITest {
         structureApi.write("test/structure", originalData)
         structureApi.write("test/structure", updatedData)
 
-        val backupFile = tempDir.resolve("backups/structures/test/structure.nbt.bak")
-        assertTrue(backupFile.exists(), "Backup should be created")
+        // Check that at least one backup file was created (with timestamp)
+        val backupDir = tempDir.resolve("backups/structures/test")
+        val hasBackup = if (backupDir.exists()) {
+            Files.walk(backupDir, 1)
+                .filter { it.fileName.toString().startsWith("structure.nbt.") }
+                .filter { it.fileName.toString().endsWith(".bak") }
+                .findFirst()
+                .isPresent
+        } else {
+            false
+        }
+
+        assertTrue(hasBackup, "Backup should be created")
     }
 
     // ====== Edge Cases ======

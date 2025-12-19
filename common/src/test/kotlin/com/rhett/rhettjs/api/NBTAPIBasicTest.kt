@@ -70,8 +70,14 @@ class NBTAPIBasicTest {
         nbtApi.write("test.nbt", originalData)
         nbtApi.write("test.nbt", updatedData)
 
-        val backupFile = backupsDir.resolve("test.nbt.bak")
-        assertTrue(backupFile.exists(), "Backup should be created")
+        // Check that at least one backup file was created (with timestamp)
+        val hasBackup = Files.walk(backupsDir, 2)
+            .filter { it.fileName.toString().startsWith("test.nbt.") }
+            .filter { it.fileName.toString().endsWith(".bak") }
+            .findFirst()
+            .isPresent
+
+        assertTrue(hasBackup, "Backup should be created")
     }
 
     @Test
