@@ -1,6 +1,6 @@
 // Example global library - available in all script contexts
 const Utils = (function() {
-    Console.log('error during Utils creation') // <-- no semi-colon
+    console.log('[Utils] Initializing Utils library');
     return {
         greeting: function(name) {
             return `Hello, ${name}!`;

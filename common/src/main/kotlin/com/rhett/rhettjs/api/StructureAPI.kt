@@ -80,14 +80,101 @@ class StructureAPI(
      *
      * @param name Structure name (with or without .nbt extension)
      * @param data Structure data (Map with size, palette, blocks, entities, etc.)
+     * @param skipBackup If true, skip automatic backup creation (default: false)
      *
      * Example:
-     *   write("village/houses/house_1", structureData)
-     *   write("village/houses/house_1.nbt", structureData)  // same
+     *   write("village/houses/house_1", structureData)                 // Auto-backup enabled
+     *   write("village/houses/house_1", structureData, skipBackup: true)  // No auto-backup
      */
-    fun write(name: String, data: Any) {
+    fun write(name: String, data: Any, skipBackup: Boolean = false) {
         val normalizedName = ensureNbtExtension(name)
-        nbtApi.write(normalizedName, data)
+        nbtApi.write(normalizedName, data, skipBackup)
+    }
+
+    /**
+     * Manually create a timestamped backup of a structure file.
+     * Automatically cleans up old backups (keeps last 5).
+     *
+     * @param name Structure name (with or without .nbt extension)
+     * @return The backup filename that was created, or null if structure doesn't exist
+     *
+     * Example:
+     *   backup("village/houses/house_1")
+     *   → Creates: backups/structures/village/houses/house_1.nbt.2024-12-19_00-42-15.bak
+     *   → Returns: "house_1.nbt.2024-12-19_00-42-15.bak"
+     */
+    fun backup(name: String): String? {
+        val normalizedName = ensureNbtExtension(name)
+        return nbtApi.createManualBackup(normalizedName)
+    }
+
+    /**
+     * List all available backups for a structure, sorted by timestamp (newest first).
+     *
+     * @param name Structure name (with or without .nbt extension)
+     * @return List of backup filenames (e.g., ["house_1.nbt.2024-12-19_00-42-15.bak", ...])
+     *
+     * Example:
+     *   listBackups("village/houses/house_1")
+     *   → ["house_1.nbt.2024-12-19_00-45-00.bak", "house_1.nbt.2024-12-19_00-42-15.bak"]
+     */
+    fun listBackups(name: String): List<String> {
+        val normalizedName = ensureNbtExtension(name)
+        return nbtApi.listBackups(normalizedName)
+    }
+
+    /**
+     * Restore a structure from its backup.
+     * By default, restores to the original location. Optionally restore to a new name.
+     *
+     * @param name Source structure name (with or without .nbt extension)
+     * @param targetName Optional new name for restored structure (defaults to original name)
+     * @param backupTimestamp Optional specific backup timestamp (defaults to most recent)
+     * @return true if restore succeeded, false if backup not found
+     *
+     * Examples:
+     *   restore("academy")
+     *   → Restores most recent backup to: structures/academy.nbt
+     *
+     *   restore("academy", "academy-restored")
+     *   → Restores most recent backup to: structures/academy-restored.nbt
+     *
+     *   restore("academy", null, "2024-12-19_00-42-15")
+     *   → Restores specific backup to: structures/academy.nbt
+     */
+    fun restore(name: String, targetName: String? = null, backupTimestamp: String? = null): Boolean {
+        val normalizedName = ensureNbtExtension(name)
+
+        // If restoring to same location, use NBTAPI's restore method
+        if (targetName == null) {
+            return nbtApi.restoreFromBackup(normalizedName, backupTimestamp)
+        }
+
+        // Otherwise, restore to a different name
+        val backups = nbtApi.listBackups(normalizedName)
+        if (backups.isEmpty()) {
+            return false
+        }
+
+        val backupToRestore = if (backupTimestamp != null) {
+            backups.firstOrNull { it.contains(backupTimestamp) }
+        } else {
+            backups.firstOrNull()
+        } ?: return false
+
+        // Read backup data
+        val backupPath = backupsDir.resolve(normalizedName).parent?.resolve(backupToRestore) ?: return false
+        if (!backupPath.exists()) {
+            return false
+        }
+
+        val backupData = nbtApi.read(backupPath.toString().removePrefix(structuresDir.toString()).removePrefix("/"))
+            ?: return false
+
+        // Write to target location
+        write(targetName, backupData)
+
+        return true
     }
 
     /**

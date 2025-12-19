@@ -65,7 +65,15 @@ object ScriptRegistry {
             .filter { it.extension == "js" }
             .forEach { file ->
                 val relativePath = baseDir.relativize(file)
-                val name = relativePath.toString().removeSuffix(".js")
+                val fullName = relativePath.toString().removeSuffix(".js")
+
+                // For utility scripts (scripts/), strip the category prefix
+                // Since /rjs run ONLY runs utility scripts, showing "scripts/abc" is redundant
+                val name = if (category == ScriptCategory.UTILITY) {
+                    fullName.removePrefix("${category.dirName}/")
+                } else {
+                    fullName
+                }
 
                 ConfigManager.debug("Found script file: $name at $file")
 

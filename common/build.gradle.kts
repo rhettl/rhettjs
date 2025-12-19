@@ -72,3 +72,26 @@ tasks.test {
         failFast = true
     }
 }
+
+/**
+ * Generate TypeScript definitions for RhettJS APIs.
+ * Output to rjs-test-scripts/__types/ for development.
+ * Usage: ./gradlew generateTypes
+ */
+tasks.register<JavaExec>("generateTypes") {
+    group = "rhettjs"
+    description = "Generate TypeScript definitions for IDE autocomplete"
+
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.rhett.rhettjs.engine.TypeGenerator")
+
+    // Args: outputDir, scriptsDir
+    args(
+        rootProject.file("rjs-test-scripts/__types").absolutePath,
+        rootProject.file("rjs-test-scripts").absolutePath
+    )
+
+    // Show output
+    standardOutput = System.out
+    errorOutput = System.err
+}

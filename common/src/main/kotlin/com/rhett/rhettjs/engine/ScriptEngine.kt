@@ -5,6 +5,7 @@ import com.rhett.rhettjs.api.ConsoleAPI
 import com.rhett.rhettjs.api.LoggerAPI
 import com.rhett.rhettjs.api.TaskAPI
 import com.rhett.rhettjs.api.ScheduleAPI
+import com.rhett.rhettjs.api.StructureAPIWrapper
 import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.events.StartupEventsAPI
 import com.rhett.rhettjs.events.ServerEventsAPI
@@ -16,6 +17,22 @@ import org.mozilla.javascript.*
  * Handles context creation, scope setup, and script execution.
  */
 object ScriptEngine {
+
+    /**
+     * Structure API instance - initialized during server startup.
+     * Available in all script contexts since it's thread-safe (file I/O only).
+     */
+    var structureAPI: StructureAPIWrapper? = null
+        private set
+
+    /**
+     * Initialize the Structure API with server paths.
+     * Called once during server startup.
+     */
+    fun initializeStructureAPI(structureApiWrapper: StructureAPIWrapper) {
+        structureAPI = structureApiWrapper
+        ConfigManager.debug("Structure API initialized and registered globally")
+    }
 
     /**
      * Clean up Rhino error messages by removing Java object references.
@@ -141,6 +158,13 @@ object ScriptEngine {
         scope.put("schedule", scope, ScheduleAPI(TickScheduler.getScheduleFunction()))
         ConfigManager.debug("Injected threading APIs: task, schedule")
 
+        // Phase 3: Structure API - available in all contexts (thread-safe file I/O)
+        structureAPI?.let { api ->
+            api.setParentScope(scope)
+            scope.put("Structure", scope, api)
+            ConfigManager.debug("Injected Structure API")
+        }
+
         // Add platform-specific APIs
         additionalApis.forEach { (name, api) ->
             // If the API is already a ScriptableObject, inject it directly
@@ -148,6 +172,20 @@ object ScriptEngine {
             val wrappedApi = if (api is ScriptableObject) {
                 api.setParentScope(scope)
                 api
+            } else if (api is Array<*>) {
+                // Special handling for arrays: convert to JavaScript array with JS strings
+                val jsArray = cx.newArray(scope, api.size)
+                ConfigManager.debug("Converting array $name: size=${api.size}, contents=${api.joinToString()}")
+                api.forEachIndexed { index, value ->
+                    // Convert each element to a JavaScript string
+                    val jsValue = when (value) {
+                        is String -> value // Rhino will auto-convert to JS string
+                        else -> Context.javaToJS(value, scope)
+                    }
+                    jsArray.put(index, jsArray, jsValue)
+                    ConfigManager.debug("  [$index] = $jsValue")
+                }
+                jsArray
             } else {
                 Context.javaToJS(api, scope)
             }
@@ -180,6 +218,59 @@ object ScriptEngine {
         ConfigManager.debug("Removed dangerous globals (Java package access)")
 
         return scope
+    }
+
+    /**
+     * Introspect available APIs in a test scope.
+     * Returns a map of API name to description/type.
+     *
+     * @param category Script category to test
+     * @param additionalApis Additional APIs to include (e.g., Caller, Args)
+     * @return Map of API names to their types/descriptions
+     */
+    fun introspectAvailableApis(
+        category: ScriptCategory = ScriptCategory.UTILITY,
+        additionalApis: Map<String, Any> = emptyMap()
+    ): Map<String, String> {
+        val apis = mutableMapOf<String, String>()
+
+        try {
+            val cx = Context.enter()
+            cx.optimizationLevel = -1
+            cx.languageVersion = Context.VERSION_ES6
+
+            val scope = createScope(category, additionalApis)
+
+            // Introspect scope and categorize APIs
+            val ids = scope.ids
+            for (id in ids) {
+                val name = id.toString()
+
+                // Skip internal Rhino objects and removed globals
+                if (name.startsWith("__") || name in listOf("Packages", "java", "javax", "org", "com", "net", "edu")) {
+                    continue
+                }
+
+                val obj = scope.get(name, scope)
+                if (obj != null && obj != Scriptable.NOT_FOUND && obj != UniqueTag.NOT_FOUND) {
+                    val typeDesc = when {
+                        obj is BaseFunction -> "function"
+                        obj is NativeObject -> "object"
+                        obj is NativeArray -> "array"
+                        obj is ScriptableObject -> obj.className
+                        else -> obj.javaClass.simpleName
+                    }
+                    apis[name] = typeDesc
+                }
+            }
+
+        } catch (e: Exception) {
+            ConfigManager.debug("Failed to introspect APIs: ${e.message}")
+        } finally {
+            Context.exit()
+        }
+
+        return apis
     }
 
     /**

@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
+import kotlin.io.path.isRegularFile
 
 /**
  * NBT API for reading/writing NBT files with path validation and automatic backups.
@@ -52,17 +53,18 @@ class NBTAPI(
      *
      * @param path Relative path within structures directory
      * @param data JavaScript-friendly data (Map/List/primitives)
+     * @param skipBackup If true, skip automatic backup creation (default: false)
      * @throws SecurityException if path is invalid or outside structures directory
      */
-    fun write(path: String, data: Any) {
+    fun write(path: String, data: Any, skipBackup: Boolean = false) {
         val dir = structuresDir ?: throw IllegalStateException("Structures directory not set")
         val file = validateAndResolvePath(dir, path)
 
         // Create parent directories if needed
         file.parent?.let { Files.createDirectories(it) }
 
-        // Create backup if file exists
-        if (file.exists() && backupsDir != null) {
+        // Create backup if file exists (unless explicitly skipped)
+        if (!skipBackup && file.exists() && backupsDir != null) {
             createBackup(path, file)
         }
 
@@ -173,19 +175,135 @@ class NBTAPI(
     }
 
     /**
-     * Create backup of existing file.
+     * Create timestamped backup of existing file.
+     * Automatically cleans up old backups (keeps last 5).
+     *
+     * @param path Relative path to the file
+     * @param file Absolute path to the file
+     * @return The backup filename that was created, or null if backup failed
      */
-    private fun createBackup(path: String, file: Path) {
-        val dir = backupsDir ?: return
+    private fun createBackup(path: String, file: Path): String? {
+        val dir = backupsDir ?: return null
 
-        // Preserve directory structure in backups
-        val backupPath = dir.resolve(path + ".bak")
+        // Create timestamped backup
+        val timestamp = java.time.LocalDateTime.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+        val backupName = "$path.$timestamp.bak"
+        val backupPath = dir.resolve(backupName)
 
         // Create parent directories
         backupPath.parent?.let { Files.createDirectories(it) }
 
         // Copy file to backup
         Files.copy(file, backupPath, StandardCopyOption.REPLACE_EXISTING)
+
+        // Cleanup: keep only last 5 backups
+        cleanupOldBackups(path, maxBackups = 5)
+
+        return backupPath.fileName.toString()
+    }
+
+    /**
+     * List all available backups for a file, sorted by timestamp (newest first).
+     *
+     * @param path Relative path within structures directory
+     * @return List of backup filenames
+     */
+    fun listBackups(path: String): List<String> {
+        val dir = backupsDir ?: return emptyList()
+        val backupPattern = "$path."
+        val backupDir = dir.resolve(path).parent ?: return emptyList()
+
+        if (!backupDir.exists()) {
+            return emptyList()
+        }
+
+        return Files.walk(backupDir, 1)
+            .filter { it.isRegularFile() }
+            .filter { it.fileName.toString().startsWith(backupPattern) }
+            .filter { it.fileName.toString().endsWith(".bak") }
+            .sorted(Comparator.reverseOrder()) // Newest first
+            .map { it.fileName.toString() }
+            .toList()
+    }
+
+    /**
+     * Clean up old backups, keeping only the most recent N backups.
+     */
+    private fun cleanupOldBackups(path: String, maxBackups: Int) {
+        val backups = listBackups(path)
+
+        if (backups.size > maxBackups) {
+            val dir = backupsDir ?: return
+            val backupDir = dir.resolve(path).parent ?: return
+            val toDelete = backups.drop(maxBackups)
+
+            toDelete.forEach { backupFilename ->
+                val backupFile = backupDir.resolve(backupFilename)
+                if (backupFile.exists()) {
+                    Files.delete(backupFile)
+                }
+            }
+        }
+    }
+
+    /**
+     * Manually create a backup of a file.
+     *
+     * @param path Relative path within structures directory
+     * @return The backup filename that was created, or null if file doesn't exist
+     */
+    fun createManualBackup(path: String): String? {
+        val dir = structuresDir ?: throw IllegalStateException("Structures directory not set")
+        val file = validateAndResolvePath(dir, path)
+
+        if (!file.exists()) {
+            return null
+        }
+
+        return createBackup(path, file)
+    }
+
+    /**
+     * Restore a file from its backup.
+     *
+     * @param path Relative path to restore to
+     * @param backupTimestamp Optional specific backup timestamp (defaults to most recent)
+     * @return true if restore succeeded, false if backup not found
+     */
+    fun restoreFromBackup(path: String, backupTimestamp: String? = null): Boolean {
+        val dir = structuresDir ?: throw IllegalStateException("Structures directory not set")
+        val backupsDirectory = backupsDir ?: return false
+
+        // Find the backup to restore
+        val backups = listBackups(path)
+        if (backups.isEmpty()) {
+            return false
+        }
+
+        val backupToRestore = if (backupTimestamp != null) {
+            backups.firstOrNull { it.contains(backupTimestamp) }
+        } else {
+            backups.firstOrNull()
+        } ?: return false
+
+        // Read backup data
+        val backupPath = backupsDirectory.resolve(path).parent?.resolve(backupToRestore) ?: return false
+        if (!backupPath.exists()) {
+            return false
+        }
+
+        val backupData = try {
+            val nbt = NbtIo.readCompressed(backupPath, NbtAccounter.unlimitedHeap())
+            nbtToJs(nbt)
+        } catch (e: IOException) {
+            return false
+        } ?: return false
+
+        // Write to target location (this will create another backup)
+        write(path, backupData)
+
+        return true
     }
 
     /**
@@ -241,7 +359,7 @@ class NBTAPI(
             }
             is StringTag -> tag.asString
             is IntTag -> tag.asInt
-            is ByteTag -> tag.asByte.toInt() == 1 // Convert to boolean
+            is ByteTag -> tag.asByte.toInt() // Keep as number (used for enums, not just booleans)
             is ShortTag -> tag.asShort.toInt()
             is LongTag -> tag.asLong
             is FloatTag -> tag.asFloat

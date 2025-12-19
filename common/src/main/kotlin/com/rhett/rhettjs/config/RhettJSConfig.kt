@@ -15,5 +15,13 @@ data class RhettJSConfig(
      * This logs internal engine behavior like script loading, context creation, etc.
      * Does NOT affect script-level console.log() or logger calls.
      */
-    val debug_logging: Boolean = false
+    val debug_logging: Boolean = false,
+
+    /**
+     * Load scripts from rjs/testing/ instead of rjs/ for in-game testing.
+     * When true AND rjs/testing/ exists, the mod will use rjs/testing/ as the base directory.
+     * This allows keeping test scripts separate from production scripts.
+     * Default: false (load from rjs/)
+     */
+    val debug_run_ingame_testing: Boolean = false
 )

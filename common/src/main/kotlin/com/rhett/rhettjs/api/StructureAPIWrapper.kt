@@ -29,12 +29,18 @@ class StructureAPIWrapper(
         val listFn = ListFunction(structureApi)
         val readFn = ReadFunction(structureApi)
         val writeFn = WriteFunction(structureApi)
+        val backupFn = BackupFunction(structureApi)
+        val listBackupsFn = ListBackupsFunction(structureApi)
+        val restoreFn = RestoreFunction(structureApi)
 
         // Don't set parent scope here - it will be set when the wrapper is injected into the script engine
         // This allows the functions to get the correct global scope
         put("list", this, listFn)
         put("read", this, readFn)
         put("write", this, writeFn)
+        put("backup", this, backupFn)
+        put("listBackups", this, listBackupsFn)
+        put("restore", this, restoreFn)
 
         // Add nbt property for advanced operations
         val nbtWrapper = NBTUtilityWrapper(structureApi.getNbtApi())
@@ -49,6 +55,9 @@ class StructureAPIWrapper(
         (get("list", this) as? BaseFunction)?.setParentScope(scope)
         (get("read", this) as? BaseFunction)?.setParentScope(scope)
         (get("write", this) as? BaseFunction)?.setParentScope(scope)
+        (get("backup", this) as? BaseFunction)?.setParentScope(scope)
+        (get("listBackups", this) as? BaseFunction)?.setParentScope(scope)
+        (get("restore", this) as? BaseFunction)?.setParentScope(scope)
         (get("nbt", this) as? ScriptableObject)?.setParentScope(scope)
     }
 
@@ -65,11 +74,9 @@ class StructureAPIWrapper(
 
             val structures = structureApi.list(pool)
 
-            // Get the global scope from thisObj's parent
-            val topScope = thisObj?.parentScope ?: ScriptableObject.getTopLevelScope(scope)
-
+            // Use the scope parameter - it's the current thread's scope
             // Create JavaScript array manually
-            val jsArray = cx.newObject(topScope, "Array") as org.mozilla.javascript.NativeArray
+            val jsArray = cx.newObject(scope, "Array") as org.mozilla.javascript.NativeArray
             structures.forEachIndexed { index, structure ->
                 jsArray.put(index, jsArray, structure)
             }
@@ -89,12 +96,38 @@ class StructureAPIWrapper(
             val name = args[0] as String
             val data = structureApi.read(name)
 
-            // Use ScriptableObject.getTopLevelScope() to get the global scope
-            val topScope = ScriptableObject.getTopLevelScope(scope)
+            // Manually convert Kotlin data structures to JavaScript objects
+            // This ensures all nested properties are properly converted in worker threads
             return if (data != null) {
-                Context.javaToJS(data, topScope)
+                convertToJS(cx, scope, data)
             } else {
                 null
+            }
+        }
+
+        /**
+         * Recursively convert Kotlin/Java data structures to JavaScript objects.
+         * Context.javaToJS() doesn't always fully convert nested structures in worker threads.
+         */
+        private fun convertToJS(cx: Context, scope: Scriptable, value: Any?): Any? {
+            return when (value) {
+                null -> null
+                is Map<*, *> -> {
+                    val jsObj = cx.newObject(scope)
+                    value.forEach { (k, v) ->
+                        jsObj.put(k.toString(), jsObj, convertToJS(cx, scope, v))
+                    }
+                    jsObj
+                }
+                is List<*> -> {
+                    val jsArray = cx.newArray(scope, value.size)
+                    value.forEachIndexed { index, item ->
+                        jsArray.put(index, jsArray, convertToJS(cx, scope, item))
+                    }
+                    jsArray
+                }
+                is String, is Number, is Boolean -> value
+                else -> Context.javaToJS(value, scope) // Fallback for other types
             }
         }
     }
@@ -115,9 +148,72 @@ class StructureAPIWrapper(
             val name = args[0] as String
             val data = Context.jsToJava(args[1], Any::class.java)
 
-            structureApi.write(name, data)
+             // Third parameter: skipBackup (optional, defaults to false)
+            val skipBackup = if (args.size > 2 && args[2] is Boolean) {
+                args[2] as Boolean
+            } else {
+                false
+            }
+
+            structureApi.write(name, data, skipBackup)
 
             return Context.getUndefinedValue()
+        }
+    }
+
+    /**
+     * Backup function implementation.
+     */
+    private class BackupFunction(private val structureApi: StructureAPI) : BaseFunction() {
+        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? {
+            if (args.isEmpty() || args[0] !is String) {
+                throw IllegalArgumentException("Structure.backup() requires a structure name")
+            }
+
+            val name = args[0] as String
+            val backupFilename = structureApi.backup(name)
+
+            return backupFilename
+        }
+    }
+
+    /**
+     * ListBackups function implementation.
+     */
+    private class ListBackupsFunction(private val structureApi: StructureAPI) : BaseFunction() {
+        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any {
+            if (args.isEmpty() || args[0] !is String) {
+                throw IllegalArgumentException("Structure.listBackups() requires a structure name")
+            }
+
+            val name = args[0] as String
+            val backups = structureApi.listBackups(name)
+
+            // Convert to JavaScript array
+            val jsArray = cx.newObject(scope, "Array") as org.mozilla.javascript.NativeArray
+            backups.forEachIndexed { index, backup ->
+                jsArray.put(index, jsArray, backup)
+            }
+            return jsArray
+        }
+    }
+
+    /**
+     * Restore function implementation.
+     */
+    private class RestoreFunction(private val structureApi: StructureAPI) : BaseFunction() {
+        override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any {
+            if (args.isEmpty() || args[0] !is String) {
+                throw IllegalArgumentException("Structure.restore() requires a structure name")
+            }
+
+            val name = args[0] as String
+            val targetName = if (args.size > 1 && args[1] is String) args[1] as String else null
+            val backupTimestamp = if (args.size > 2 && args[2] is String) args[2] as String else null
+
+            val success = structureApi.restore(name, targetName, backupTimestamp)
+
+            return success
         }
     }
 }

@@ -169,6 +169,11 @@ object GlobalsLoader {
             val value = globalsSource.get(key, globalsSource)
 
             if (value != Scriptable.NOT_FOUND) {
+                // Update parent scope for functions so they can access runtime variables
+                if (value is Scriptable) {
+                    value.parentScope = scope
+                }
+
                 // Add to globals meta-object (includes console, logger, etc.)
                 globalsObject.put(key, globalsObject, value)
 

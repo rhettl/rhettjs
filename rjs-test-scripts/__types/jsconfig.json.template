@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "commonjs",
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "moduleResolution": "node"
+  },
+  "include": [
+    "scripts/**/*.js",
+    "server/**/*.js",
+    "startup/**/*.js",
+    "globals/**/*.js"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

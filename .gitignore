@@ -4,6 +4,7 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+/.kotlin/
 
 # Local gradle properties override (not in git)
 # User-specific settings like development=true
@@ -34,8 +35,8 @@ logs/
 minecraft/
 
 # Deployment symlinks (local minecraft instances)
-minecraft-fabric/
-minecraft-neoforge/
+minecraft-fabric
+minecraft-neoforge
 
 # Temporary files
 *.log
@@ -53,3 +54,4 @@ dev-docs/
 
 # Test scripts (for local testing only)
 build-test*.sh
+

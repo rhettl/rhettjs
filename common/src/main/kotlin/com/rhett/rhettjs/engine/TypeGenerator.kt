@@ -1,0 +1,590 @@
+package com.rhett.rhettjs.engine
+
+import com.rhett.rhettjs.api.*
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.LocalDateTime
+
+/**
+ * Standalone TypeScript definition generator for RhettJS APIs.
+ * Can be run from Gradle or invoked in-game via /rjs probe.
+ */
+object TypeGenerator {
+
+    /**
+     * Generate TypeScript definitions for RhettJS APIs.
+     *
+     * @param outputDir Directory to write the generated files (e.g., rjs/__types/)
+     * @param scriptsDir Scripts directory containing globals/ (optional, for loading custom globals)
+     * @param category Script category to introspect (default: UTILITY for full API surface)
+     * @return GenerationResult with status and file count
+     */
+    fun generate(
+        outputDir: Path,
+        scriptsDir: Path? = null,
+        category: ScriptCategory = ScriptCategory.UTILITY
+    ): GenerationResult {
+        return try {
+            // Create output directory if it doesn't exist
+            if (!Files.exists(outputDir)) {
+                Files.createDirectories(outputDir)
+            }
+
+            // Load globals if scripts directory provided
+            if (scriptsDir != null && Files.exists(scriptsDir)) {
+                println("Loading globals from: $scriptsDir")
+                GlobalsLoader.reload(scriptsDir)
+            }
+
+            // Initialize Structure API for type generation (if not already initialized)
+            // This is necessary for Gradle-based generation where mod initialization hasn't run
+            if (ScriptEngine.structureAPI == null) {
+                // Use scripts directory if provided, otherwise use temp directory
+                val tempStructuresDir = scriptsDir?.resolve("structures") ?: Files.createTempDirectory("rhettjs-structures")
+                val tempBackupsDir = scriptsDir?.resolve("structure-backups") ?: Files.createTempDirectory("rhettjs-backups")
+
+                // Ensure directories exist
+                Files.createDirectories(tempStructuresDir)
+                Files.createDirectories(tempBackupsDir)
+
+                val structureApi = StructureAPI(tempStructuresDir, tempBackupsDir)
+                val structureWrapper = StructureAPIWrapper(structureApi)
+                ScriptEngine.initializeStructureAPI(structureWrapper)
+                println("Initialized Structure API for type generation")
+            }
+
+            // Introspect APIs
+            val baseApis = ScriptEngine.introspectAvailableApis(category)
+
+            // Categorize APIs
+            val coreApis = baseApis.filter { (name, _) ->
+                name in listOf("console", "logger", "task", "schedule")
+            }
+
+            val structureApi = baseApis.filter { (name, _) -> name == "Structure" }
+            val eventApis = baseApis.filter { (name, _) -> name.endsWith("Events") }
+
+            // Globals are everything else (excluding standard JS objects)
+            val standardJsObjects = setOf(
+                "Object", "Array", "String", "Number", "Boolean", "Date", "Math", "JSON",
+                "RegExp", "Error", "Function", "undefined", "NaN", "Infinity",
+                "parseInt", "parseFloat", "isNaN", "isFinite", "decodeURI", "decodeURIComponent",
+                "encodeURI", "encodeURIComponent", "escape", "unescape", "eval"
+            )
+
+            val globals = baseApis.filter { (name, _) ->
+                name !in coreApis.keys &&
+                name !in structureApi.keys &&
+                name !in eventApis.keys &&
+                name !in standardJsObjects
+            }
+
+            // Generate files
+            var filesGenerated = 0
+
+            generateCoreTypes(outputDir.resolve("rhettjs.d.ts"), coreApis, structureApi, eventApis)
+            filesGenerated++
+
+            if (globals.isNotEmpty()) {
+                generateGlobalsTypes(outputDir.resolve("rhettjs-globals.d.ts"), globals)
+                filesGenerated++
+            }
+
+            generateReadme(outputDir.resolve("README.md"), globals.isNotEmpty())
+            filesGenerated++
+
+            generateJsConfigTemplate(outputDir.resolve("jsconfig.json.template"))
+            filesGenerated++
+
+            GenerationResult.Success(
+                filesGenerated = filesGenerated,
+                coreApiCount = coreApis.size + structureApi.size + eventApis.size + 2, // +2 for Caller and Args
+                globalsCount = globals.size
+            )
+
+        } catch (e: Exception) {
+            GenerationResult.Error(e.message ?: "Unknown error", e)
+        }
+    }
+
+    /**
+     * Generate core TypeScript definitions file using reflection.
+     */
+    private fun generateCoreTypes(
+        file: Path,
+        coreApis: Map<String, String>,
+        structureApi: Map<String, String>,
+        eventApis: Map<String, String>
+    ) {
+        val content = buildString {
+            appendLine("// RhettJS Core API Type Definitions")
+            appendLine("// Auto-generated by TypeGenerator using Java Reflection")
+            appendLine("// Last updated: ${LocalDateTime.now()}")
+            appendLine()
+
+            // Core APIs - dynamically generated via reflection
+            if (coreApis.isNotEmpty()) {
+                appendLine("// ============================================================================")
+                appendLine("// Core APIs")
+                appendLine("// ============================================================================")
+                appendLine()
+
+                coreApis.forEach { (name, _) ->
+                    val apiDefinition = generateApiDefinition(name)
+                    if (apiDefinition != null) {
+                        appendLine(apiDefinition)
+                        appendLine()
+                    }
+                }
+            }
+
+            // Structure API - dynamically generated via reflection
+            if (structureApi.isNotEmpty()) {
+                appendLine("// ============================================================================")
+                appendLine("// Structure API")
+                appendLine("// ============================================================================")
+                appendLine()
+
+                val structureDefinition = generateStructureApiDefinition()
+                if (structureDefinition != null) {
+                    appendLine(structureDefinition)
+                    appendLine()
+                }
+            }
+
+            // Event APIs
+            if (eventApis.isNotEmpty()) {
+                appendLine("// ============================================================================")
+                appendLine("// Event APIs")
+                appendLine("// ============================================================================")
+                appendLine()
+                eventApis.forEach { (name, _) ->
+                    appendLine("declare const $name: any;  // TODO: Add detailed type definitions")
+                    appendLine()
+                }
+            }
+
+            // Utility Script Context APIs
+            appendLine("// ============================================================================")
+            appendLine("// Utility Script APIs (available in /rjs run)")
+            appendLine("// ============================================================================")
+            appendLine()
+            appendLine("declare const Caller: {")
+            appendLine("    sendMessage(message: string): void;")
+            appendLine("    sendSuccess(message: string): void;")
+            appendLine("    sendError(message: string): void;")
+            appendLine("    sendWarning(message: string): void;")
+            appendLine("    sendInfo(message: string): void;")
+            appendLine("    sendRaw(json: string): void;")
+            appendLine("    getName(): string;")
+            appendLine("    isPlayer(): boolean;")
+            appendLine("};")
+            appendLine()
+            appendLine("declare const Args: string[];")
+            appendLine()
+        }
+
+        Files.writeString(file, content)
+    }
+
+    /**
+     * Dynamically generate TypeScript definition for a specific API using reflection.
+     */
+    private fun generateApiDefinition(name: String): String? {
+        return try {
+            when (name) {
+                "console" -> {
+                    // Inspect ConsoleAPI
+                    val consoleApi = ConsoleAPI()
+                    val methods = ReflectionIntrospector.introspectJavaObject(consoleApi)
+                    ReflectionIntrospector.generateInterfaceDefinition("console", methods)
+                }
+                "logger" -> {
+                    // Inspect LoggerAPI
+                    val loggerApi = LoggerAPI()
+                    val methods = ReflectionIntrospector.introspectJavaObject(loggerApi)
+                    ReflectionIntrospector.generateInterfaceDefinition("logger", methods)
+                }
+                "task" -> {
+                    // TaskAPI is a BaseFunction - special handling
+                    // task(callback: () => void): void
+                    "declare function task(callback: () => void): void;"
+                }
+                "schedule" -> {
+                    // ScheduleAPI is a BaseFunction - special handling with generics
+                    // schedule<T extends any[]>(ticks: number, callback: (...args: T) => void, ...args: T): void
+                    "declare function schedule<T extends any[]>(ticks: number, callback: (...args: T) => void, ...args: T): void;"
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            println("Warning: Failed to generate definition for $name: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Generate Structure API definition dynamically via reflection.
+     * Introspects the actual StructureAPI and NBTAPI classes to generate method signatures.
+     */
+    private fun generateStructureApiDefinition(): String? {
+        return try {
+            // Verify Structure API is initialized
+            val structureWrapper = ScriptEngine.structureAPI ?: return null
+
+            // Access the underlying StructureAPI via reflection
+            val structureApiField = structureWrapper.javaClass.getDeclaredField("structureApi")
+            structureApiField.isAccessible = true
+            val structureApi = structureApiField.get(structureWrapper) as StructureAPI
+
+            // Get NBTAPI instance
+            val nbtApi = structureApi.getNbtApi()
+
+            // Introspect StructureAPI methods
+            val structureMethods = ReflectionIntrospector.introspectJavaObject(structureApi)
+                .filter { it.name in setOf("list", "read", "write") }
+
+            // Introspect NBTAPI methods
+            val nbtMethods = ReflectionIntrospector.introspectJavaObject(nbtApi)
+                .filter { it.name in setOf("forEach", "filter", "find", "some") }
+
+            buildString {
+                // Generate supporting interfaces
+
+                // NBTFilterResult is a real Kotlin data class - introspect it
+                val filterResultClass = NBTAPI.FilterResult::class.java
+                val filterResultProperties = filterResultClass.declaredFields
+                    .filter { !it.isSynthetic && !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+                    .map { field ->
+                        val fieldName = field.name
+                        val fieldType = when (fieldName) {
+                            "path" -> "(string | number)[]"  // Better type for path
+                            else -> TypeMapper.toTypeScript(field.genericType)
+                        }
+                        ReflectionIntrospector.PropertySignature(fieldName, fieldType, readonly = true)
+                    }
+
+                appendLine("interface NBTFilterResult {")
+                filterResultProperties.forEach { prop ->
+                    appendLine("    ${prop.name}: ${prop.type};")
+                }
+                appendLine("}")
+                appendLine()
+
+                // StructureEntity and StructureData represent the NBT file format structure
+                // These are not Kotlin classes - they're the shape of JavaScript objects from Structure.read()
+                // Based on Minecraft's NBT structure specification (stable)
+                appendLine("interface StructureEntity {")
+                appendLine("    blockPos: [number, number, number];")
+                appendLine("    pos: [number, number, number];")
+                appendLine("    nbt: { id: string; [key: string]: any };")
+                appendLine("}")
+                appendLine()
+                appendLine("interface StructureData {")
+                appendLine("    size: [number, number, number];")
+                appendLine("    entities?: StructureEntity[];")
+                appendLine("    [key: string]: any;")
+                appendLine("}")
+                appendLine()
+
+                // Generate main Structure interface using introspected methods
+                appendLine("declare const Structure: {")
+
+                // Add introspected methods with better parameter names
+                structureMethods.forEach { method ->
+                    // Use better parameter names for known methods
+                    val signature = when (method.name) {
+                        "list" -> "pool?: string"
+                        "read" -> "name: string"
+                        "write" -> "name: string, data: StructureData"
+                        else -> method.parameters.joinToString(", ") { param ->
+                            val paramName = param.name
+                            val optional = if (param.optional) "?" else ""
+                            if (paramName.startsWith("...")) {
+                                "$paramName: ${param.type}"
+                            } else {
+                                "$paramName$optional: ${param.type}"
+                            }
+                        }
+                    }
+
+                    // Override return type for known methods with better types
+                    val returnType = when (method.name) {
+                        "list" -> "string[]"
+                        "read" -> "StructureData | null"
+                        "write" -> "void"
+                        else -> method.returnType
+                    }
+
+                    appendLine("    ${method.name}($signature): $returnType;")
+                }
+
+                // Generate nested nbt object with better callback signatures
+                appendLine("    nbt: {")
+                nbtMethods.forEach { method ->
+                    // Use better signatures for known NBT methods
+                    val signature = when (method.name) {
+                        "forEach" -> "data: any, callback: (value: any, path: (string | number)[], parent: any) => void"
+                        "filter" -> "data: any, predicate: (value: any, path: (string | number)[], parent: any) => boolean"
+                        "find" -> "data: any, predicate: (value: any, path: (string | number)[], parent: any) => boolean"
+                        "some" -> "data: any, predicate: (value: any, path: (string | number)[], parent: any) => boolean"
+                        else -> method.parameters.joinToString(", ") { param ->
+                            val paramName = param.name
+                            val optional = if (param.optional) "?" else ""
+                            if (paramName.startsWith("...")) {
+                                "$paramName: ${param.type}"
+                            } else {
+                                "$paramName$optional: ${param.type}"
+                            }
+                        }
+                    }
+
+                    // Override return type for known methods with better types
+                    val returnType = when (method.name) {
+                        "forEach" -> "void"
+                        "filter" -> "NBTFilterResult[]"
+                        "find" -> "NBTFilterResult | null"
+                        "some" -> "boolean"
+                        else -> method.returnType
+                    }
+
+                    appendLine("        ${method.name}($signature): $returnType;")
+                }
+                appendLine("    };")
+                appendLine("};")
+            }
+        } catch (e: Exception) {
+            println("Warning: Failed to generate Structure API definition: ${e.message}")
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Generate globals TypeScript definitions file.
+     */
+    private fun generateGlobalsTypes(file: Path, globals: Map<String, String>) {
+        val content = buildString {
+            appendLine("// RhettJS Global Utilities Type Definitions")
+            appendLine("// Auto-generated by TypeGenerator")
+            appendLine("// Last updated: ${LocalDateTime.now()}")
+            appendLine()
+            appendLine("// ============================================================================")
+            appendLine("// Global Utilities (from globals/ directory)")
+            appendLine("// ============================================================================")
+            appendLine()
+
+            globals.forEach { (name, type) ->
+                when (type) {
+                    "function" -> {
+                        // Check if it's a constructor function (PascalCase naming convention)
+                        if (name.isNotEmpty() && name[0].isUpperCase()) {
+                            // Constructor function - treat as class
+                            appendLine("declare class $name {")
+                            appendLine("    constructor(...args: any[]);")
+                            appendLine("    [key: string]: any;  // Add specific methods/properties as needed")
+                            appendLine("}")
+                        } else {
+                            // Regular function
+                            appendLine("declare function $name(...args: any[]): any;")
+                        }
+                    }
+                    else -> {
+                        // All non-functions are constants (objects, primitives from IIFEs, etc.)
+                        appendLine("declare const $name: any;  // Type: $type")
+                    }
+                }
+                appendLine()
+            }
+        }
+
+        Files.writeString(file, content)
+    }
+
+    /**
+     * Generate README with IDE setup instructions.
+     */
+    private fun generateReadme(file: Path, hasGlobals: Boolean) {
+        val content = buildString {
+            appendLine("# RhettJS TypeScript Definitions")
+            appendLine()
+            appendLine("Auto-generated type definitions for IDE autocomplete.")
+            appendLine()
+            appendLine("**Generated**: ${LocalDateTime.now()}")
+            appendLine()
+            appendLine("## Files")
+            appendLine()
+            appendLine("- `rhettjs.d.ts` - Core RhettJS APIs (console, logger, task, schedule, Structure, Caller, Args)")
+            if (hasGlobals) {
+                appendLine("- `rhettjs-globals.d.ts` - Custom global utilities from `globals/` directory")
+            }
+            appendLine("- `jsconfig.json.template` - VSCode project configuration template")
+            appendLine()
+            appendLine("## IDE Setup")
+            appendLine()
+            appendLine("### Visual Studio Code")
+            appendLine()
+            appendLine("**Option 1: Project-Wide (Recommended)**")
+            appendLine()
+            appendLine("1. Copy the template:")
+            appendLine("   ```bash")
+            appendLine("   cp rjs/__types/jsconfig.json.template rjs/jsconfig.json")
+            appendLine("   ```")
+            appendLine("2. Reload VSCode (Cmd/Ctrl + Shift + P → \"Reload Window\")")
+            appendLine("3. All scripts now have autocomplete!")
+            appendLine()
+            appendLine("**Option 2: Per-File**")
+            appendLine()
+            appendLine("Add to the top of your script:")
+            appendLine("```javascript")
+            appendLine("/// <reference path=\"../__types/rhettjs.d.ts\" />")
+            if (hasGlobals) {
+                appendLine("/// <reference path=\"../__types/rhettjs-globals.d.ts\" />")
+            }
+            appendLine("```")
+            appendLine()
+            appendLine("### IntelliJ IDEA / WebStorm")
+            appendLine()
+            appendLine("**Automatic** - Should work out of the box!")
+            appendLine()
+            appendLine("If not:")
+            appendLine("1. Right-click `rjs/__types/` folder")
+            appendLine("2. Mark Directory As → **Resource Root**")
+            appendLine("3. File → Invalidate Caches → Restart (if needed)")
+            appendLine()
+            appendLine("### Other IDEs")
+            appendLine()
+            appendLine("Most IDEs with TypeScript/JavaScript support will auto-discover `.d.ts` files.")
+            appendLine("If not, add reference directives (see VSCode Option 2 above).")
+            appendLine()
+            appendLine("## Testing Autocomplete")
+            appendLine()
+            appendLine("Create a test script and type:")
+            appendLine()
+            appendLine("```javascript")
+            appendLine("console.    // Should show: log, info, warn, error")
+            appendLine("Structure.  // Should show: read, write, list")
+            appendLine("```")
+            appendLine()
+            if (hasGlobals) {
+                appendLine("For custom globals:")
+                appendLine("```javascript")
+                appendLine("new MessageBuffer()  // Should show constructor and methods")
+                appendLine("```")
+                appendLine()
+            }
+            appendLine("If you see suggestions, autocomplete is working! 🎉")
+            appendLine()
+            appendLine("## Notes")
+            appendLine()
+            appendLine("- **Core APIs** are always accurate")
+            appendLine("- **Custom globals** are best-effort - complex patterns may need manual refinement")
+            appendLine("- **Re-generate** by running `/rjs probe` in-game or `./gradlew generateTypes` from terminal")
+            appendLine("- **Manually edit** `rhettjs-globals.d.ts` if auto-generated types aren't perfect")
+            appendLine()
+            appendLine("## Examples")
+            appendLine()
+            appendLine("See example scripts at:")
+            appendLine("- `docs/example-scripts/` (in repository)")
+            appendLine("- GitHub: https://github.com/your-org/RhettJS/tree/main/docs/example-scripts")
+            appendLine()
+            appendLine("## More Information")
+            appendLine()
+            appendLine("- RhettJS Documentation: `docs/`")
+            appendLine("- API Reference: `docs/api/`")
+            appendLine("- GitHub: https://github.com/your-org/RhettJS")
+        }
+
+        Files.writeString(file, content)
+    }
+
+    /**
+     * Generate jsconfig.json.template for VSCode.
+     */
+    private fun generateJsConfigTemplate(file: Path) {
+        val content = """{
+  "compilerOptions": {
+    "target": "ES5",
+    "module": "commonjs",
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "moduleResolution": "node"
+  },
+  "include": [
+    "scripts/**/*.js",
+    "server/**/*.js",
+    "startup/**/*.js",
+    "globals/**/*.js"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+"""
+        Files.writeString(file, content)
+    }
+
+    /**
+     * Result of type generation.
+     */
+    sealed class GenerationResult {
+        data class Success(
+            val filesGenerated: Int,
+            val coreApiCount: Int,
+            val globalsCount: Int
+        ) : GenerationResult()
+
+        data class Error(
+            val message: String,
+            val exception: Exception
+        ) : GenerationResult()
+    }
+
+    /**
+     * CLI entry point for Gradle task.
+     *
+     * Usage: TypeGenerator <outputDir> [scriptsDir]
+     * - outputDir: Where to write the generated .d.ts files
+     * - scriptsDir: Optional directory containing globals/ subdirectory
+     */
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val outputDir = if (args.isNotEmpty()) {
+            Path.of(args[0])
+        } else {
+            Path.of("rjs-test-scripts/__types")
+        }
+
+        val scriptsDir = if (args.size > 1) {
+            Path.of(args[1])
+        } else {
+            // Default to parent directory of output (rjs-test-scripts/)
+            outputDir.parent ?: Path.of("rjs-test-scripts")
+        }
+
+        println("RhettJS TypeScript Generator")
+        println("=============================")
+        println("Output directory: $outputDir")
+        println("Scripts directory: $scriptsDir")
+        println()
+
+        val result = generate(outputDir, scriptsDir)
+
+        when (result) {
+            is GenerationResult.Success -> {
+                println("✓ Successfully generated ${result.filesGenerated} files")
+                println("  - Core APIs: ${result.coreApiCount}")
+                println("  - Custom Globals: ${result.globalsCount}")
+                println()
+                println("See $outputDir/README.md for IDE setup instructions")
+            }
+
+            is GenerationResult.Error -> {
+                System.err.println("✗ Generation failed: ${result.message}")
+                result.exception.printStackTrace()
+                System.exit(1)
+            }
+        }
+    }
+}

@@ -4,18 +4,21 @@ import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
 import com.rhett.rhettjs.RhettJSCommon
+import com.rhett.rhettjs.api.CallerAPI
+import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.engine.ScriptCategory
 import com.rhett.rhettjs.engine.ScriptEngine
 import com.rhett.rhettjs.engine.ScriptRegistry
 import com.rhett.rhettjs.engine.ScriptResult
 import com.rhett.rhettjs.engine.ScriptStatus
+import com.rhett.rhettjs.engine.ScriptSystemInitializer
 import com.rhett.rhettjs.engine.GlobalsLoader
-import com.rhett.rhettjs.events.StartupEventsAPI
-import com.rhett.rhettjs.events.ServerEventsAPI
+import com.rhett.rhettjs.engine.TypeGenerator
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
 import java.util.concurrent.CompletableFuture
+import kotlin.io.path.exists
 
 /**
  * Implementation of the /rjs command.
@@ -62,6 +65,10 @@ object RJSCommand {
                 .then(
                     Commands.literal("globals")
                         .executes { globalsCommand(it) }
+                )
+                .then(
+                    Commands.literal("probe")
+                        .executes { probeCommand(it) }
                 )
         )
 
@@ -112,10 +119,16 @@ object RJSCommand {
     }
 
     /**
-     * Handle /rjs run <script> command.
+     * Handle /rjs run <script> [args ...] command.
      */
-    private fun runCommand(context: CommandContext<CommandSourceStack>, scriptName: String): Int {
+    private fun runCommand(context: CommandContext<CommandSourceStack>, scriptNameAndArgs: String): Int {
         val source = context.source
+
+        // Parse script name and arguments
+        // Format: "scriptname arg1 arg2 arg3"
+        val parts = scriptNameAndArgs.split(Regex("\\s+"))
+        val scriptName = parts[0]
+        val args = parts.drop(1) // Remaining parts are arguments
 
         val script = ScriptRegistry.getScript(scriptName, ScriptCategory.UTILITY)
 
@@ -130,15 +143,24 @@ object RJSCommand {
             return 0
         }
 
-        source.sendSuccess({ Component.literal("§7[RhettJS] Running $scriptName...") }, true)
+        // Show script execution message
+        val argsDisplay = if (args.isNotEmpty()) " (${args.size} arg${if (args.size == 1) "" else "s"})" else ""
+        source.sendSuccess({ Component.literal("§7[RhettJS] Running $scriptName$argsDisplay...") }, true)
+
+        // Create caller API for chat messages
+        val callerAPI = CallerAPI(source)
+
+        // Create Args array wrapper for JavaScript
+        // ScriptEngine will convert this to a proper JavaScript array with JS strings
+        val argsArray = args.toTypedArray()
 
         // Execute async to avoid blocking the game tick
-        // Phase 1 MVP: No NBT API yet, just console/logger for testing
-        val apis = emptyMap<String, Any>()
-
         CompletableFuture.supplyAsync {
             try {
-                ScriptEngine.executeScript(script, apis)
+                ScriptEngine.executeScript(script, mapOf(
+                    "Caller" to callerAPI,
+                    "Args" to argsArray
+                ))
             } catch (e: Exception) {
                 RhettJSCommon.LOGGER.error("[RhettJS] Unexpected error running script", e)
                 ScriptResult.Error(e.message ?: "Unknown error", e)
@@ -172,48 +194,7 @@ object RJSCommand {
         source.sendSuccess({ Component.literal("§7[RhettJS] Reloading scripts...") }, true)
 
         try {
-            val scriptsDir = source.server.serverDirectory.resolve("rjs")
-
-            // Phase 2: Clear all event handlers and globals
-            RhettJSCommon.LOGGER.info("[RhettJS] Clearing event handlers...")
-            StartupEventsAPI.clear()
-            ServerEventsAPI.clear()
-            GlobalsLoader.clear()
-
-            // Rescan all scripts
-            RhettJSCommon.LOGGER.info("[RhettJS] Rescanning scripts...")
-            ScriptRegistry.scan(scriptsDir)
-
-            // Reload globals
-            RhettJSCommon.LOGGER.info("[RhettJS] Reloading globals...")
-            GlobalsLoader.reload(scriptsDir)
-
-            // Re-execute startup scripts
-            val startupScripts = ScriptRegistry.getScripts(ScriptCategory.STARTUP)
-            if (startupScripts.isNotEmpty()) {
-                RhettJSCommon.LOGGER.info("[RhettJS] Executing ${startupScripts.size} startup scripts...")
-                startupScripts.forEach { script ->
-                    try {
-                        ScriptEngine.executeScript(script)
-                    } catch (e: Exception) {
-                        RhettJSCommon.LOGGER.error("[RhettJS] Failed to execute startup script: ${script.name}", e)
-                    }
-                }
-            }
-
-            // Reload server scripts (re-register event handlers)
-            val serverScripts = ScriptRegistry.getScripts(ScriptCategory.SERVER)
-            if (serverScripts.isNotEmpty()) {
-                RhettJSCommon.LOGGER.info("[RhettJS] Loading ${serverScripts.size} server scripts...")
-                serverScripts.forEach { script ->
-                    try {
-                        ScriptEngine.executeScript(script)
-                    } catch (e: Exception) {
-                        RhettJSCommon.LOGGER.error("[RhettJS] Failed to load server script: ${script.name}", e)
-                    }
-                }
-            }
-
+            ScriptSystemInitializer.reload(source.server.serverDirectory)
             source.sendSuccess({ Component.literal("§a[RhettJS] Reload complete") }, true)
             return 1
 
@@ -248,4 +229,59 @@ object RJSCommand {
 
         return 1
     }
+
+    /**
+     * Handle /rjs probe command.
+     * Introspects available RhettJS APIs and generates TypeScript definitions.
+     */
+    private fun probeCommand(context: CommandContext<CommandSourceStack>): Int {
+        val source = context.source
+
+        source.sendSuccess({ Component.literal("§6=== RhettJS API Probe ===") }, false)
+        source.sendSuccess({ Component.literal("§7Generating types from code...") }, false)
+        source.sendSuccess({ Component.literal("§7Probe will attempt to map your globals/ scripts,") }, false)
+        source.sendSuccess({ Component.literal("§7but some patterns are imperfect and probe may be inaccurate for those.") }, false)
+        source.sendSuccess({ Component.literal("") }, false)
+
+        try {
+            // Generate TypeScript definitions
+            val scriptsDir = source.server.serverDirectory.resolve("rjs")
+            val typesDir = scriptsDir.resolve("__types")
+
+            val result = TypeGenerator.generate(typesDir, scriptsDir)
+
+            when (result) {
+                is TypeGenerator.GenerationResult.Success -> {
+                    // Display summary
+                    source.sendSuccess({ Component.literal("") }, false)
+                    source.sendSuccess({ Component.literal("§a✓ Generated TypeScript definitions") }, false)
+                    source.sendSuccess({ Component.literal("  §7Location: §frjs/__types/") }, false)
+                    source.sendSuccess({ Component.literal("  §7Files:") }, false)
+                    source.sendSuccess({ Component.literal("    §f- rhettjs.d.ts §7(${result.coreApiCount} APIs)") }, false)
+                    if (result.globalsCount > 0) {
+                        source.sendSuccess({ Component.literal("    §f- rhettjs-globals.d.ts §7(${result.globalsCount} globals)") }, false)
+                    }
+                    source.sendSuccess({ Component.literal("    §f- README.md §7(setup instructions)") }, false)
+                    source.sendSuccess({ Component.literal("    §f- jsconfig.json.template §7(VSCode config)") }, false)
+
+                    source.sendSuccess({ Component.literal("") }, false)
+                    source.sendSuccess({ Component.literal("§7See §frjs/__types/README.md §7for IDE setup instructions") }, false)
+
+                    return 1
+                }
+
+                is TypeGenerator.GenerationResult.Error -> {
+                    source.sendFailure(Component.literal("§c[RhettJS] Failed to generate types: ${result.message}"))
+                    RhettJSCommon.LOGGER.error("[RhettJS] Type generation failed", result.exception)
+                    return 0
+                }
+            }
+
+        } catch (e: Exception) {
+            source.sendFailure(Component.literal("§c[RhettJS] Failed to generate types: ${e.message}"))
+            RhettJSCommon.LOGGER.error("[RhettJS] Type generation failed", e)
+            return 0
+        }
+    }
+
 }

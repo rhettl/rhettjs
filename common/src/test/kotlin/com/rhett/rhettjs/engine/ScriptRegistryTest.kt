@@ -51,9 +51,9 @@ class ScriptRegistryTest {
 
         assertEquals(1, ScriptRegistry.getAllScripts().size, "Should find one script")
 
-        val script = ScriptRegistry.getScript("scripts/test")
+        val script = ScriptRegistry.getScript("test")
         assertNotNull(script, "Should find script by name")
-        assertEquals("scripts/test", script?.name)
+        assertEquals("test", script?.name)
         assertEquals(ScriptCategory.UTILITY, script?.category)
         assertEquals(ScriptStatus.LOADED, script?.status)
     }
@@ -84,7 +84,7 @@ class ScriptRegistryTest {
 
         assertEquals(1, ScriptRegistry.getAllScripts().size)
 
-        val script = ScriptRegistry.getScript("scripts/nested/deep/nested")
+        val script = ScriptRegistry.getScript("nested/deep/nested")
         assertNotNull(script, "Should find nested script")
     }
 
@@ -96,7 +96,7 @@ class ScriptRegistryTest {
 
         ScriptRegistry.scan(tempDir)
 
-        val script = ScriptRegistry.getScript("scripts/error")
+        val script = ScriptRegistry.getScript("error")
         assertNotNull(script, "Should still register script with error")
         assertEquals(ScriptStatus.ERROR, script?.status, "Should mark as ERROR")
     }
@@ -109,11 +109,11 @@ class ScriptRegistryTest {
         ScriptRegistry.scan(tempDir)
 
         // Get by name only (first match)
-        val scriptAny = ScriptRegistry.getScript("scripts/test")
+        val scriptAny = ScriptRegistry.getScript("test")
         assertNotNull(scriptAny)
 
         // Get by name and category
-        val scriptUtility = ScriptRegistry.getScript("scripts/test", ScriptCategory.UTILITY)
+        val scriptUtility = ScriptRegistry.getScript("test", ScriptCategory.UTILITY)
         assertNotNull(scriptUtility)
         assertEquals(ScriptCategory.UTILITY, scriptUtility?.category)
 
@@ -145,13 +145,13 @@ class ScriptRegistryTest {
         tempDir.resolve("scripts/test.js").writeText("console.log('test');")
         ScriptRegistry.scan(tempDir)
 
-        val script = ScriptRegistry.getScript("scripts/test")
+        val script = ScriptRegistry.getScript("test")
         assertEquals(ScriptStatus.LOADED, script?.status)
 
         // Mark as failed
-        ScriptRegistry.markFailed("scripts/test", RuntimeException("Test error"))
+        ScriptRegistry.markFailed("test", RuntimeException("Test error"))
 
-        val updatedScript = ScriptRegistry.getScript("scripts/test")
+        val updatedScript = ScriptRegistry.getScript("test")
         assertEquals(ScriptStatus.ERROR, updatedScript?.status)
     }
 
@@ -164,7 +164,7 @@ class ScriptRegistryTest {
 
         val failedScripts = ScriptRegistry.getFailedScripts()
         assertEquals(1, failedScripts.size)
-        assertEquals("scripts/bad", failedScripts[0].name)
+        assertEquals("bad", failedScripts[0].name)
     }
 
     @Test
@@ -233,7 +233,7 @@ class ScriptRegistryTest {
 
         ScriptRegistry.scan(tempDir)
 
-        val script = ScriptRegistry.getScript("scripts/test")
+        val script = ScriptRegistry.getScript("test")
         assertNotNull(script)
         assertTrue(script!!.lastModified > 0, "Should capture lastModified timestamp")
         assertTrue(script.lastModified <= System.currentTimeMillis(), "Timestamp should be in the past")

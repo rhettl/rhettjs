@@ -104,6 +104,11 @@ object ConfigManager {
     fun isDebugEnabled(): Boolean = config.debug_logging
 
     /**
+     * Check if in-game testing mode is enabled.
+     */
+    fun isIngameTestingEnabled(): Boolean = config.debug_run_ingame_testing
+
+    /**
      * Log a debug message if debug logging is enabled.
      */
     fun debug(message: String) {
