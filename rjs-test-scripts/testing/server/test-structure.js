@@ -71,6 +71,7 @@ try {
     }
 } catch (e) {
     console.error('[Structure Test] ✗ Test 4 failed:', e.message);
+    console.error(e.stack)
 }
 
 // Test 5: NBT utility - forEach

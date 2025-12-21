@@ -165,7 +165,8 @@ class ScriptEngineTest {
             assertFalse(scope.has("org", scope), "Should remove org")
             assertFalse(scope.has("com", scope), "Should remove com")
             assertFalse(scope.has("System", scope), "Should remove System")
-            assertFalse(scope.has("Runtime", scope), "Should remove Runtime")
+            // Note: We keep our custom Runtime API (with env, exit) but remove Java's Runtime
+            assertTrue(scope.has("Runtime", scope), "Should have our custom Runtime API")
         } finally {
             Context.exit()
         }

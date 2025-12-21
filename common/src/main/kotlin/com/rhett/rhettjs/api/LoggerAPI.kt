@@ -1,6 +1,7 @@
 package com.rhett.rhettjs.api
 
 import com.rhett.rhettjs.RhettJSCommon
+import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.threading.ThreadSafeAPI
 
 /**
@@ -28,6 +29,12 @@ class LoggerAPI : ThreadSafeAPI {
             RhettJSCommon.LOGGER.error("[RhettJS] $message", error)
         } else {
             RhettJSCommon.LOGGER.error("[RhettJS] $message")
+        }
+    }
+
+    fun debug(message: String) {
+        if (ConfigManager.isDebugEnabled()) {
+            RhettJSCommon.LOGGER.info("[RhettJS] [DEBUG] $message")
         }
     }
 }

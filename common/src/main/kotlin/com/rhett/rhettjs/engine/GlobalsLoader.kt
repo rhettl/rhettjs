@@ -75,6 +75,9 @@ object GlobalsLoader {
             scope.put("console", scope, Context.javaToJS(ConsoleAPI(), scope))
             scope.put("logger", scope, Context.javaToJS(LoggerAPI(), scope))
 
+            // Add Runtime API
+            scope.put("Runtime", scope, com.rhett.rhettjs.api.RuntimeAPI.createJSObject(scope))
+
             // Load globals directory
             val globalsDir = scriptsDir.resolve("globals")
             if (!globalsDir.exists()) {
@@ -164,6 +167,10 @@ object GlobalsLoader {
         // Create meta-object to hold all globals
         val globalsObject = cx.newObject(scope)
 
+        // Debug: Check if Runtime exists in globalScope
+        val runtimeInGlobalScope = globalsSource.get("Runtime", globalsSource)
+        RhettJSCommon.LOGGER.info("[RhettJS-DEBUG] Runtime in globalScope: ${runtimeInGlobalScope != Scriptable.NOT_FOUND}")
+
         globalsSource.ids.forEach { id ->
             val key = id.toString()
             val value = globalsSource.get(key, globalsSource)
@@ -178,8 +185,10 @@ object GlobalsLoader {
                 globalsObject.put(key, globalsObject, value)
 
                 // Skip base APIs for direct injection (added separately by ScriptEngine)
-                if (key !in setOf("console", "logger", "nbt")) {
+                if (key !in setOf("console", "logger", "nbt", "Runtime")) {
                     scope.put(key, scope, value)
+                } else if (key == "Runtime") {
+                    RhettJSCommon.LOGGER.info("[RhettJS-DEBUG] Skipping Runtime injection from globalScope (already in scope)")
                 }
             }
         }
@@ -202,7 +211,17 @@ object GlobalsLoader {
     }
 
     /**
-     * Get list of loaded global names (excluding console/logger).
+     * Get the global scope for introspection.
+     * Used by TypeGenerator to introspect loaded globals.
+     *
+     * @return The global scope, or null if not loaded
+     */
+    fun getGlobalScope(): Scriptable? {
+        return globalScope
+    }
+
+    /**
+     * Get list of loaded global names (excluding base APIs).
      *
      * @return List of global variable names that were loaded
      */
@@ -210,7 +229,7 @@ object GlobalsLoader {
         val globals = globalScope ?: return emptyList()
         return globals.ids
             .map { it.toString() }
-            .filter { it !in setOf("console", "logger", "nbt") }
+            .filter { it !in setOf("console", "logger", "nbt", "Runtime", "MAX_WORKER_THREADS", "TICKS_PER_SECOND", "IS_DEBUG") }
             .sorted()
     }
 

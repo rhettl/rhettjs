@@ -98,6 +98,9 @@ object ServerEventsAPI {
                 // Call handler
                 handler.call(cx, scope, scope, arrayOf(event))
 
+                // Process microtasks (Promise .then() callbacks)
+                cx.processMicrotasks()
+
             } catch (e: Exception) {
                 RhettJSCommon.LOGGER.error("[RhettJS] Error in command handler for $commandName", e)
                 // Continue with other handlers
@@ -123,6 +126,9 @@ object ServerEventsAPI {
 
                 // Call handler
                 handler.call(cx, scope, scope, arrayOf(event))
+
+                // Process microtasks (Promise .then() callbacks)
+                cx.processMicrotasks()
 
             } catch (e: Exception) {
                 RhettJSCommon.LOGGER.error("[RhettJS] Error in $eventType handler", e)

@@ -2,12 +2,11 @@
 
 Auto-generated type definitions for IDE autocomplete.
 
-**Generated**: 2025-12-18T22:58:17.741979
+**Generated**: 2025-12-20T21:09:55.914351
 
 ## Files
 
 - `rhettjs.d.ts` - Core RhettJS APIs (console, logger, task, schedule, Structure, Caller, Args)
-- `rhettjs-globals.d.ts` - Custom global utilities from `globals/` directory
 - `jsconfig.json.template` - VSCode project configuration template
 
 ## IDE Setup
@@ -28,7 +27,6 @@ Auto-generated type definitions for IDE autocomplete.
 Add to the top of your script:
 ```javascript
 /// <reference path="../__types/rhettjs.d.ts" />
-/// <reference path="../__types/rhettjs-globals.d.ts" />
 ```
 
 ### IntelliJ IDEA / WebStorm
@@ -54,18 +52,14 @@ console.    // Should show: log, info, warn, error
 Structure.  // Should show: read, write, list
 ```
 
-For custom globals:
-```javascript
-new MessageBuffer()  // Should show constructor and methods
-```
-
 If you see suggestions, autocomplete is working! 🎉
 
 ## Notes
 
-- **Core APIs** are always accurate
-- **Custom globals** are best-effort - complex patterns may need manual refinement
-- **Re-generate** by running `/rjs probe` in-game or `./gradlew generateTypes` from terminal
+- **Core APIs** are dynamically introspected and accurate
+- **Structure/NBT types** match the official Minecraft NBT structure format
+- **Custom globals** are introspected at runtime - complex patterns may need manual refinement
+- **Re-generate** by running `/rjs probe` in-game
 - **Manually edit** `rhettjs-globals.d.ts` if auto-generated types aren't perfect
 
 ## Examples

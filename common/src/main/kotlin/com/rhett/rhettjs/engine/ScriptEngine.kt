@@ -3,13 +3,15 @@ package com.rhett.rhettjs.engine
 import com.rhett.rhettjs.RhettJSCommon
 import com.rhett.rhettjs.api.ConsoleAPI
 import com.rhett.rhettjs.api.LoggerAPI
+import com.rhett.rhettjs.api.PromiseExtensions
+import com.rhett.rhettjs.api.RuntimeAPI
 import com.rhett.rhettjs.api.TaskAPI
-import com.rhett.rhettjs.api.ScheduleAPI
+import com.rhett.rhettjs.api.WaitAPI
 import com.rhett.rhettjs.api.StructureAPIWrapper
 import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.events.StartupEventsAPI
 import com.rhett.rhettjs.events.ServerEventsAPI
-import com.rhett.rhettjs.threading.TickScheduler
+import com.rhett.rhettjs.threading.EventLoop
 import org.mozilla.javascript.*
 
 /**
@@ -37,10 +39,14 @@ object ScriptEngine {
     /**
      * Clean up Rhino error messages by removing Java object references.
      * Replaces patterns like "org.mozilla.javascript.Undefined@57b72838" with "undefined"
+     * and "NativeObject@abc123" with "[object Object]"
      */
     private fun cleanErrorMessage(message: String): String {
         return message
             .replace(Regex("org\\.mozilla\\.javascript\\.Undefined@[0-9a-f]+"), "undefined")
+            .replace(Regex("org\\.mozilla\\.javascript\\.NativeObject@[0-9a-f]+"), "[object Object]")
+            .replace(Regex("org\\.mozilla\\.javascript\\.NativeArray@[0-9a-f]+"), "[object Array]")
+            .replace(Regex("org\\.mozilla\\.javascript\\.NativeFunction@[0-9a-f]+"), "[object Function]")
             .replace(Regex("org\\.mozilla\\.javascript\\.[A-Za-z]+@[0-9a-f]+"), "<object>")
             .replace(" is not a function, it is undefined", " is not a function")
     }
@@ -98,13 +104,23 @@ object ScriptEngine {
             val scriptContent = script.path.toFile().readText()
             ConfigManager.debugLazy { "Script length: ${scriptContent.length} characters" }
 
-            val result = context.evaluateString(
-                scope,
-                scriptContent,
-                script.name,
-                1,
-                null
-            )
+            // Create event loop for this script execution
+            val eventLoop = EventLoop(context, scope)
+            EventLoop.setCurrent(eventLoop)
+
+            val result = try {
+                context.evaluateString(
+                    scope,
+                    scriptContent,
+                    script.name,
+                    1,
+                    null
+                )
+            } finally {
+                // Run event loop until all async work completes
+                eventLoop.runUntilComplete(script.name)
+                EventLoop.setCurrent(null)
+            }
 
             ConfigManager.debug("Script executed successfully: ${script.name}")
             ScriptResult.Success(result)
@@ -153,10 +169,18 @@ object ScriptEngine {
         scope.put("logger", scope, Context.javaToJS(LoggerAPI(), scope))
         ConfigManager.debug("Injected universal APIs: console, logger")
 
-        // Phase 3: Threading APIs - task() and schedule()
+        // Threading APIs - task() and wait()
         scope.put("task", scope, TaskAPI())
-        scope.put("schedule", scope, ScheduleAPI(TickScheduler.getScheduleFunction()))
-        ConfigManager.debug("Injected threading APIs: task, schedule")
+        scope.put("wait", scope, WaitAPI())
+
+        // Runtime API with env and exit()
+        val runtimeObj = RuntimeAPI.createJSObject(scope)
+        scope.put("Runtime", scope, runtimeObj)
+        ConfigManager.debug("Injected threading APIs: task, wait")
+
+        // Inject Promise prototype extensions (thenTask, thenWait)
+        PromiseExtensions.inject(scope)
+        ConfigManager.debug("Injected Promise extensions: thenTask, thenWait")
 
         // Phase 3: Structure API - available in all contexts (thread-safe file I/O)
         structureAPI?.let { api ->
@@ -275,11 +299,22 @@ object ScriptEngine {
 
     /**
      * Remove dangerous Java package access from the scope.
+     * Note: We preserve our custom "Runtime" API (RhettJS Runtime.env, Runtime.exit())
+     * by saving it before deletion and restoring it after.
      */
     private fun removeDangerousGlobals(scope: Scriptable) {
+        // Save our Runtime API before removing Java Runtime
+        val ourRuntimeAPI = scope.get("Runtime", scope)
+
         val removedGlobals = listOf(
             "Packages", "java", "javax", "org", "com", "net", "edu", "System", "Runtime"
         )
         removedGlobals.forEach { scope.delete(it) }
+
+        // Restore our Runtime API
+        if (ourRuntimeAPI != Scriptable.NOT_FOUND) {
+            scope.put("Runtime", scope, ourRuntimeAPI)
+        }
     }
+
 }

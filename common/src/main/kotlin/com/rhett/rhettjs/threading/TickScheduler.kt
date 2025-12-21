@@ -1,22 +1,14 @@
 package com.rhett.rhettjs.threading
 
 /**
- * Singleton manager for the schedule() function's tick processing.
+ * Singleton manager for tick processing.
  *
  * This object:
- * 1. Provides a single ScheduleFunction instance for all scripts
- * 2. Exposes tick() method for game loop integration
+ * 1. Exposes tick() method for game loop integration
+ * 2. Ticks the current EventLoop to process wait timers
  * 3. Allows platform-specific code to call tick() each game tick
  */
 object TickScheduler {
-
-    private val scheduleFunction = ScheduleFunction()
-
-    /**
-     * Get the ScheduleFunction instance for injection into JavaScript.
-     * All scripts share this single instance to coordinate scheduled tasks.
-     */
-    fun getScheduleFunction(): ScheduleFunction = scheduleFunction
 
     /**
      * Process one game tick.
@@ -27,15 +19,23 @@ object TickScheduler {
      * - NeoForge: TickEvent.ServerTickEvent (Phase.END)
      */
     fun tick() {
-        scheduleFunction.tick()
+        // Tick the current event loop (if any script is executing)
+        EventLoop.getCurrent()?.tick()
     }
 
     /**
-     * Get the number of currently scheduled tasks (for debugging/monitoring).
+     * Cancel all pending work in the current event loop.
+     * Called by Runtime.exit() to stop script execution.
      */
-    fun getScheduledTaskCount(): Int {
-        // Would need to expose this from ScheduleFunction
-        // For now, return 0 (can add later if needed)
-        return 0
+    fun cancelAll() {
+        EventLoop.getCurrent()?.shutdown()
+    }
+
+    /**
+     * Reset to accept work again.
+     * Called on script reload.
+     */
+    fun reset() {
+        EventLoop.getCurrent()?.reset()
     }
 }

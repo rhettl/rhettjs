@@ -6,22 +6,29 @@ import java.nio.file.Path
 import java.time.LocalDateTime
 
 /**
- * Standalone TypeScript definition generator for RhettJS APIs.
- * Can be run from Gradle or invoked in-game via /rjs probe.
+ * TypeScript definition generator for RhettJS APIs.
+ * Designed to run in-game via /rjs probe with full runtime context.
+ *
+ * Generates accurate TypeScript definitions by introspecting:
+ * - Core APIs (console, logger, task, schedule) via reflection
+ * - Structure API and NBT utilities via reflection
+ * - JavaScript globals from globals/ directory via Rhino introspection
+ * - Event APIs
  */
 object TypeGenerator {
 
     /**
      * Generate TypeScript definitions for RhettJS APIs.
+     * Must be called from within the game runtime (via /rjs probe).
      *
      * @param outputDir Directory to write the generated files (e.g., rjs/__types/)
-     * @param scriptsDir Scripts directory containing globals/ (optional, for loading custom globals)
+     * @param scriptsDir Scripts directory containing globals/ subdirectory
      * @param category Script category to introspect (default: UTILITY for full API surface)
      * @return GenerationResult with status and file count
      */
     fun generate(
         outputDir: Path,
-        scriptsDir: Path? = null,
+        scriptsDir: Path,
         category: ScriptCategory = ScriptCategory.UTILITY
     ): GenerationResult {
         return try {
@@ -30,35 +37,16 @@ object TypeGenerator {
                 Files.createDirectories(outputDir)
             }
 
-            // Load globals if scripts directory provided
-            if (scriptsDir != null && Files.exists(scriptsDir)) {
-                println("Loading globals from: $scriptsDir")
-                GlobalsLoader.reload(scriptsDir)
-            }
-
-            // Initialize Structure API for type generation (if not already initialized)
-            // This is necessary for Gradle-based generation where mod initialization hasn't run
-            if (ScriptEngine.structureAPI == null) {
-                // Use scripts directory if provided, otherwise use temp directory
-                val tempStructuresDir = scriptsDir?.resolve("structures") ?: Files.createTempDirectory("rhettjs-structures")
-                val tempBackupsDir = scriptsDir?.resolve("structure-backups") ?: Files.createTempDirectory("rhettjs-backups")
-
-                // Ensure directories exist
-                Files.createDirectories(tempStructuresDir)
-                Files.createDirectories(tempBackupsDir)
-
-                val structureApi = StructureAPI(tempStructuresDir, tempBackupsDir)
-                val structureWrapper = StructureAPIWrapper(structureApi)
-                ScriptEngine.initializeStructureAPI(structureWrapper)
-                println("Initialized Structure API for type generation")
-            }
-
-            // Introspect APIs
+            // Introspect APIs from runtime
             val baseApis = ScriptEngine.introspectAvailableApis(category)
 
             // Categorize APIs
             val coreApis = baseApis.filter { (name, _) ->
                 name in listOf("console", "logger", "task", "schedule")
+            }
+
+            val constants = baseApis.filter { (name, _) ->
+                name in listOf("MAX_WORKER_THREADS", "TICKS_PER_SECOND", "IS_DEBUG")
             }
 
             val structureApi = baseApis.filter { (name, _) -> name == "Structure" }
@@ -74,6 +62,7 @@ object TypeGenerator {
 
             val globals = baseApis.filter { (name, _) ->
                 name !in coreApis.keys &&
+                name !in constants.keys &&
                 name !in structureApi.keys &&
                 name !in eventApis.keys &&
                 name !in standardJsObjects
@@ -85,12 +74,7 @@ object TypeGenerator {
             generateCoreTypes(outputDir.resolve("rhettjs.d.ts"), coreApis, structureApi, eventApis)
             filesGenerated++
 
-            if (globals.isNotEmpty()) {
-                generateGlobalsTypes(outputDir.resolve("rhettjs-globals.d.ts"), globals)
-                filesGenerated++
-            }
-
-            generateReadme(outputDir.resolve("README.md"), globals.isNotEmpty())
+            generateReadme(outputDir.resolve("README.md"), false)
             filesGenerated++
 
             generateJsConfigTemplate(outputDir.resolve("jsconfig.json.template"))
@@ -98,8 +82,8 @@ object TypeGenerator {
 
             GenerationResult.Success(
                 filesGenerated = filesGenerated,
-                coreApiCount = coreApis.size + structureApi.size + eventApis.size + 2, // +2 for Caller and Args
-                globalsCount = globals.size
+                coreApiCount = coreApis.size + constants.size + structureApi.size + eventApis.size + 2, // +2 for Caller and Args
+                globalsCount = 0
             )
 
         } catch (e: Exception) {
@@ -120,6 +104,44 @@ object TypeGenerator {
             appendLine("// RhettJS Core API Type Definitions")
             appendLine("// Auto-generated by TypeGenerator using Java Reflection")
             appendLine("// Last updated: ${LocalDateTime.now()}")
+            appendLine()
+
+            // Runtime API
+            appendLine("// ============================================================================")
+            appendLine("// Runtime API")
+            appendLine("// ============================================================================")
+            appendLine()
+            appendLine("/** Runtime environment and lifecycle control */")
+            appendLine("declare const Runtime: {")
+            appendLine("    /** Environment constants */")
+            appendLine("    env: {")
+            appendLine("        /** Maximum number of worker threads available (determined at boot based on CPU cores, max 4) */")
+            appendLine("        MAX_WORKER_THREADS: number;")
+            appendLine("        /** Minecraft ticks per second (always 20) */")
+            appendLine("        TICKS_PER_SECOND: number;")
+            appendLine("        /** Whether debug logging is enabled in rhettjs.json config */")
+            appendLine("        IS_DEBUG: boolean;")
+            appendLine("        /** RhettJS version */")
+            appendLine("        RJS_VERSION: string;")
+            appendLine("    };")
+            appendLine("    /** Stop script execution and cancel all pending scheduled tasks */")
+            appendLine("    exit(): void;")
+            appendLine()
+            appendLine("    /**")
+            appendLine("     * Set the event loop timeout for the current script execution.")
+            appendLine("     * Must be called before any async operations (task/wait).")
+            appendLine("     * Default: 60000ms (60 seconds)")
+            appendLine("     *")
+            appendLine("     * WARNING: Setting this too high can cause server hangs if scripts don't complete.")
+            appendLine("     * Use with caution.")
+            appendLine("     *")
+            appendLine("     * @param timeoutMs Maximum time to wait for async operations in milliseconds")
+            appendLine("     *")
+            appendLine("     * @example")
+            appendLine("     * Runtime.setEventLoopTimeout(120000); // 2 minute timeout for slow data migration")
+            appendLine("     */")
+            appendLine("    setEventLoopTimeout(timeoutMs: number): void;")
+            appendLine("};")
             appendLine()
 
             // Core APIs - dynamically generated via reflection
@@ -169,23 +191,80 @@ object TypeGenerator {
             appendLine("// Utility Script APIs (available in /rjs run)")
             appendLine("// ============================================================================")
             appendLine()
+
+            // Generate Caller API dynamically by introspecting the class
+            val callerMethods = CallerAPI::class.java.declaredMethods
+                .filter { !it.isSynthetic && java.lang.reflect.Modifier.isPublic(it.modifiers) }
+                .map { method ->
+                    val params = method.parameters.mapIndexed { index, param ->
+                        val paramName = "arg$index"  // Java reflection doesn't preserve param names
+                        val paramType = TypeMapper.toTypeScript(param.parameterizedType)
+                        ReflectionIntrospector.Parameter(paramName, paramType, optional = false)
+                    }
+                    val returnType = TypeMapper.toTypeScript(method.genericReturnType)
+
+                    // Override parameter names for better DX
+                    val betterParams: List<ReflectionIntrospector.Parameter> = when (method.name) {
+                        "sendMessage", "sendSuccess", "sendError", "sendWarning", "sendInfo" ->
+                            listOf(ReflectionIntrospector.Parameter("message", "string", false))
+                        "sendRaw" ->
+                            listOf(ReflectionIntrospector.Parameter("json", "string", false))
+                        else -> params
+                    }
+
+                    ReflectionIntrospector.MethodSignature(method.name, betterParams, returnType)
+                }
+                .distinctBy { it.name }  // Remove overloads
+
             appendLine("declare const Caller: {")
-            appendLine("    sendMessage(message: string): void;")
-            appendLine("    sendSuccess(message: string): void;")
-            appendLine("    sendError(message: string): void;")
-            appendLine("    sendWarning(message: string): void;")
-            appendLine("    sendInfo(message: string): void;")
-            appendLine("    sendRaw(json: string): void;")
-            appendLine("    getName(): string;")
-            appendLine("    isPlayer(): boolean;")
+            callerMethods.forEach { method ->
+                val params = method.parameters.joinToString(", ") { param ->
+                    val optional = if (param.optional) "?" else ""
+                    "${param.name}$optional: ${param.type}"
+                }
+                appendLine("    ${method.name}($params): ${method.returnType};")
+            }
             appendLine("};")
             appendLine()
+
             appendLine("declare const Args: string[];")
             appendLine()
         }
 
         Files.writeString(file, content)
     }
+
+    /**
+     * Load static NBT structure type definitions from resources.
+     * These are hand-crafted, version-specific definitions for Minecraft 1.21.1.
+     */
+    private fun loadStaticNBTStructureTypes(): String {
+        return try {
+            val resourceStream = TypeGenerator::class.java.getResourceAsStream("/rhettjs-types/nbt-structure.d.ts")
+            if (resourceStream != null) {
+                resourceStream.bufferedReader().use { it.readText() }
+            } else {
+                // Fallback if resource not found
+                println("Warning: Could not load static NBT structure types from resources")
+                "// NBT structure types not available"
+            }
+        } catch (e: Exception) {
+            println("Warning: Failed to load static NBT structure types: ${e.message}")
+            "// NBT structure types not available"
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Dynamically generate TypeScript definition for a specific API using reflection.
@@ -197,7 +276,8 @@ object TypeGenerator {
                     // Inspect ConsoleAPI
                     val consoleApi = ConsoleAPI()
                     val methods = ReflectionIntrospector.introspectJavaObject(consoleApi)
-                    ReflectionIntrospector.generateInterfaceDefinition("console", methods)
+                    // Add @ts-ignore to avoid conflict with built-in console type
+                    "// @ts-ignore\n" + ReflectionIntrospector.generateInterfaceDefinition("console", methods)
                 }
                 "logger" -> {
                     // Inspect LoggerAPI
@@ -206,15 +286,119 @@ object TypeGenerator {
                     ReflectionIntrospector.generateInterfaceDefinition("logger", methods)
                 }
                 "task" -> {
-                    // TaskAPI is a BaseFunction - special handling
-                    // task(callback: () => void): void
-                    "declare function task(callback: () => void): void;"
+                    // TaskAPI - returns Promise
+                    buildString {
+                        appendLine("/**")
+                        appendLine(" * Execute a function on a worker thread.")
+                        appendLine(" * Returns a Promise that resolves when the worker completes.")
+                        appendLine(" *")
+                        appendLine(" * Workers run in isolated Context but CAN access parent scope via closures.")
+                        appendLine(" * ⚠️ AVOID sharing mutable state - workers run concurrently, causing race conditions!")
+                        appendLine(" * ")
+                        appendLine(" * Workers CAN use: console, logger, Structure, task() (nested), Runtime")
+                        appendLine(" * Workers CANNOT use: wait(), player, world, server APIs")
+                        appendLine(" *")
+                        appendLine(" * @param callback Function to execute on worker thread")
+                        appendLine(" * @param args Arguments to pass to the callback (must be primitives or JS objects)")
+                        appendLine(" * @returns Promise that resolves with the callback's return value")
+                        appendLine(" *")
+                        appendLine(" * @example Pass data as arguments (recommended)")
+                        appendLine(" * const data = [1, 2, 3];")
+                        appendLine(" * task((arr) => arr.map(x => x * 2), data).then(result => {")
+                        appendLine(" *     console.log(result); // [2, 4, 6]")
+                        appendLine(" * });")
+                        appendLine(" *")
+                        appendLine(" * @example Using closures (works, but avoid mutable state)")
+                        appendLine(" * const MULTIPLIER = 10;")
+                        appendLine(" * task((val) => val * MULTIPLIER, 5).then(console.log); // 50")
+                        appendLine(" *")
+                        appendLine(" * @example ⚠️ AVOID - Race condition with shared mutable state")
+                        appendLine(" * const arr = [];")
+                        appendLine(" * task(() => arr.push(1));  // DON'T DO THIS - concurrent modification!")
+                        appendLine(" *")
+                        appendLine(" * @example Nested tasks (automatically runs immediately on same thread)")
+                        appendLine(" * task(() => {")
+                        appendLine(" *     return task(() => \"inner\"); // Runs immediately, returns resolved Promise")
+                        appendLine(" * }).then(result => console.log(result)); // \"inner\"")
+                        appendLine(" */")
+                        appendLine("declare function task<T = any>(")
+                        appendLine("    callback: (...args: any[]) => T,")
+                        appendLine("    ...args: any[]")
+                        appendLine("): Promise<T>;")
+                        appendLine()
+                        appendLine("/**")
+                        appendLine(" * Wait for a specified number of game ticks before resolving.")
+                        appendLine(" * Returns a Promise that resolves after N ticks (20 ticks = 1 second).")
+                        appendLine(" *")
+                        appendLine(" * ONLY works on the server thread (NOT in workers).")
+                        appendLine(" * Workers should exit and use .thenWait() to return to server thread.")
+                        appendLine(" *")
+                        appendLine(" * @param ticks Number of game ticks to wait (minimum 1)")
+                        appendLine(" * @returns Promise that resolves with undefined after the delay")
+                        appendLine(" *")
+                        appendLine(" * @example Basic wait")
+                        appendLine(" * wait(20).then(() => {")
+                        appendLine(" *     console.log(\"1 second later\");")
+                        appendLine(" * });")
+                        appendLine(" *")
+                        appendLine(" * @example Sequential waits")
+                        appendLine(" * wait(10).then(() => {")
+                        appendLine(" *     console.log(\"After 10 ticks\");")
+                        appendLine(" *     return wait(10);")
+                        appendLine(" * }).then(() => {")
+                        appendLine(" *     console.log(\"After 20 ticks total\");")
+                        appendLine(" * });")
+                        appendLine(" *")
+                        appendLine(" * @example Combining with task")
+                        appendLine(" * task(() => Structure.read(\"house\"))")
+                        appendLine(" *     .thenWait(20) // Wait 1 second after reading")
+                        appendLine(" *     .then(data => console.log(\"Delayed result:\", data));")
+                        appendLine(" */")
+                        appendLine("declare function wait(ticks: number): Promise<void>;")
+                        appendLine()
+                        appendLine("/**")
+                        appendLine(" * Promise extensions for chaining async operations.")
+                        appendLine(" * Added by RhettJS to Promise.prototype.")
+                        appendLine(" */")
+                        appendLine("interface Promise<T> {")
+                        appendLine("    /**")
+                        appendLine("     * Chain to a worker thread.")
+                        appendLine("     * If the Promise resolves with a value, it's passed to the callback.")
+                        appendLine("     * If the Promise resolves with undefined, the callback is called with no arguments.")
+                        appendLine("     *")
+                        appendLine("     * @param callback Function to execute on worker thread")
+                        appendLine("     * @returns Promise that resolves with the worker's return value")
+                        appendLine("     *")
+                        appendLine("     * @example With value")
+                        appendLine("     * task(() => \"step1\")")
+                        appendLine("     *     .thenTask(result => result + \"-step2\")")
+                        appendLine("     *     .then(result => console.log(result)); // \"step1-step2\"")
+                        appendLine("     *")
+                        appendLine("     * @example With undefined (no argument)")
+                        appendLine("     * Promise.resolve()")
+                        appendLine("     *     .thenTask(() => \"from-worker\")")
+                        appendLine("     *     .then(result => console.log(result)); // \"from-worker\"")
+                        appendLine("     */")
+                        appendLine("    thenTask<U>(callback: (value: T) => U): Promise<U>;")
+                        appendLine()
+                        appendLine("    /**")
+                        appendLine("     * Chain with a tick delay, passing the result through.")
+                        appendLine("     * Equivalent to: .then(result => wait(ticks).then(() => result))")
+                        appendLine("     *")
+                        appendLine("     * @param ticks Number of game ticks to wait")
+                        appendLine("     * @returns Promise that resolves with the same value after the delay")
+                        appendLine("     *")
+                        appendLine("     * @example")
+                        appendLine("     * task(() => 42)")
+                        appendLine("     *     .thenWait(20) // Wait 1 second")
+                        appendLine("     *     .then(result => console.log(result)); // 42 (preserved)")
+                        appendLine("     */")
+                        appendLine("    thenWait(ticks: number): Promise<T>;")
+                        append("}")
+                    }
                 }
-                "schedule" -> {
-                    // ScheduleAPI is a BaseFunction - special handling with generics
-                    // schedule<T extends any[]>(ticks: number, callback: (...args: T) => void, ...args: T): void
-                    "declare function schedule<T extends any[]>(ticks: number, callback: (...args: T) => void, ...args: T): void;"
-                }
+                "wait" -> null  // wait() is generated together with task()
+                "schedule" -> null  // schedule() is deprecated/removed
                 else -> null
             }
         } catch (e: Exception) {
@@ -271,20 +455,10 @@ object TypeGenerator {
                 appendLine("}")
                 appendLine()
 
-                // StructureEntity and StructureData represent the NBT file format structure
-                // These are not Kotlin classes - they're the shape of JavaScript objects from Structure.read()
-                // Based on Minecraft's NBT structure specification (stable)
-                appendLine("interface StructureEntity {")
-                appendLine("    blockPos: [number, number, number];")
-                appendLine("    pos: [number, number, number];")
-                appendLine("    nbt: { id: string; [key: string]: any };")
-                appendLine("}")
-                appendLine()
-                appendLine("interface StructureData {")
-                appendLine("    size: [number, number, number];")
-                appendLine("    entities?: StructureEntity[];")
-                appendLine("    [key: string]: any;")
-                appendLine("}")
+                // Include static NBT structure type definitions from resources
+                // These are version-specific (Minecraft 1.21.1) and hand-crafted for accuracy
+                val nbtStructureTypes = loadStaticNBTStructureTypes()
+                appendLine(nbtStructureTypes)
                 appendLine()
 
                 // Generate main Structure interface using introspected methods
@@ -360,46 +534,7 @@ object TypeGenerator {
         }
     }
 
-    /**
-     * Generate globals TypeScript definitions file.
-     */
-    private fun generateGlobalsTypes(file: Path, globals: Map<String, String>) {
-        val content = buildString {
-            appendLine("// RhettJS Global Utilities Type Definitions")
-            appendLine("// Auto-generated by TypeGenerator")
-            appendLine("// Last updated: ${LocalDateTime.now()}")
-            appendLine()
-            appendLine("// ============================================================================")
-            appendLine("// Global Utilities (from globals/ directory)")
-            appendLine("// ============================================================================")
-            appendLine()
 
-            globals.forEach { (name, type) ->
-                when (type) {
-                    "function" -> {
-                        // Check if it's a constructor function (PascalCase naming convention)
-                        if (name.isNotEmpty() && name[0].isUpperCase()) {
-                            // Constructor function - treat as class
-                            appendLine("declare class $name {")
-                            appendLine("    constructor(...args: any[]);")
-                            appendLine("    [key: string]: any;  // Add specific methods/properties as needed")
-                            appendLine("}")
-                        } else {
-                            // Regular function
-                            appendLine("declare function $name(...args: any[]): any;")
-                        }
-                    }
-                    else -> {
-                        // All non-functions are constants (objects, primitives from IIFEs, etc.)
-                        appendLine("declare const $name: any;  // Type: $type")
-                    }
-                }
-                appendLine()
-            }
-        }
-
-        Files.writeString(file, content)
-    }
 
     /**
      * Generate README with IDE setup instructions.
@@ -415,9 +550,6 @@ object TypeGenerator {
             appendLine("## Files")
             appendLine()
             appendLine("- `rhettjs.d.ts` - Core RhettJS APIs (console, logger, task, schedule, Structure, Caller, Args)")
-            if (hasGlobals) {
-                appendLine("- `rhettjs-globals.d.ts` - Custom global utilities from `globals/` directory")
-            }
             appendLine("- `jsconfig.json.template` - VSCode project configuration template")
             appendLine()
             appendLine("## IDE Setup")
@@ -477,9 +609,10 @@ object TypeGenerator {
             appendLine()
             appendLine("## Notes")
             appendLine()
-            appendLine("- **Core APIs** are always accurate")
-            appendLine("- **Custom globals** are best-effort - complex patterns may need manual refinement")
-            appendLine("- **Re-generate** by running `/rjs probe` in-game or `./gradlew generateTypes` from terminal")
+            appendLine("- **Core APIs** are dynamically introspected and accurate")
+            appendLine("- **Structure/NBT types** match the official Minecraft NBT structure format")
+            appendLine("- **Custom globals** are introspected at runtime - complex patterns may need manual refinement")
+            appendLine("- **Re-generate** by running `/rjs probe` in-game")
             appendLine("- **Manually edit** `rhettjs-globals.d.ts` if auto-generated types aren't perfect")
             appendLine()
             appendLine("## Examples")
@@ -541,50 +674,4 @@ object TypeGenerator {
         ) : GenerationResult()
     }
 
-    /**
-     * CLI entry point for Gradle task.
-     *
-     * Usage: TypeGenerator <outputDir> [scriptsDir]
-     * - outputDir: Where to write the generated .d.ts files
-     * - scriptsDir: Optional directory containing globals/ subdirectory
-     */
-    @JvmStatic
-    fun main(args: Array<String>) {
-        val outputDir = if (args.isNotEmpty()) {
-            Path.of(args[0])
-        } else {
-            Path.of("rjs-test-scripts/__types")
-        }
-
-        val scriptsDir = if (args.size > 1) {
-            Path.of(args[1])
-        } else {
-            // Default to parent directory of output (rjs-test-scripts/)
-            outputDir.parent ?: Path.of("rjs-test-scripts")
-        }
-
-        println("RhettJS TypeScript Generator")
-        println("=============================")
-        println("Output directory: $outputDir")
-        println("Scripts directory: $scriptsDir")
-        println()
-
-        val result = generate(outputDir, scriptsDir)
-
-        when (result) {
-            is GenerationResult.Success -> {
-                println("✓ Successfully generated ${result.filesGenerated} files")
-                println("  - Core APIs: ${result.coreApiCount}")
-                println("  - Custom Globals: ${result.globalsCount}")
-                println()
-                println("See $outputDir/README.md for IDE setup instructions")
-            }
-
-            is GenerationResult.Error -> {
-                System.err.println("✗ Generation failed: ${result.message}")
-                result.exception.printStackTrace()
-                System.exit(1)
-            }
-        }
-    }
 }

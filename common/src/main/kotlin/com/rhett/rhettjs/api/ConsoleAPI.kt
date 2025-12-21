@@ -1,6 +1,7 @@
 package com.rhett.rhettjs.api
 
 import com.rhett.rhettjs.RhettJSCommon
+import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.threading.ThreadSafeAPI
 import org.mozilla.javascript.*
 
@@ -24,6 +25,13 @@ class ConsoleAPI : ThreadSafeAPI {
     fun error(vararg args: Any?) {
         val message = args.joinToString(" ") { formatValue(it) }
         RhettJSCommon.LOGGER.error("[RhettJS] $message")
+    }
+
+    fun debug(vararg args: Any?) {
+        if (ConfigManager.isDebugEnabled()) {
+            val message = args.joinToString(" ") { formatValue(it) }
+            RhettJSCommon.LOGGER.info("[RhettJS] [DEBUG] $message")
+        }
     }
 
     /**

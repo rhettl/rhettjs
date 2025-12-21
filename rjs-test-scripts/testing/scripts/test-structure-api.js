@@ -50,9 +50,9 @@ console.log('Testing Structure API in WORKER THREAD context:');
 console.log('');
 
 // Test 3: List structures on worker thread
-task(function() {
+task(() => {
   console.log('3. Structure.list() (worker thread)');
-  var workerThreadList = Structure.list();
+  const workerThreadList = Structure.list();
   console.log('   Result: ' + (workerThreadList ? workerThreadList.length + ' structures found' : 'null'));
   if (workerThreadList && workerThreadList.length > 0) {
     console.log('   First structure: ' + workerThreadList[0]);
@@ -62,10 +62,10 @@ task(function() {
   // Test 4: Read structure on worker thread
   console.log('4. Structure.read() (worker thread)');
   if (workerThreadList && workerThreadList.length > 0) {
-    var testStructureName = workerThreadList[0];
+    const testStructureName = workerThreadList[0];
     console.log('   Reading: ' + testStructureName);
 
-    var workerThreadData = Structure.read(testStructureName);
+    const workerThreadData = Structure.read(testStructureName);
     console.log('   Result: ' + (workerThreadData ? 'success' : 'null'));
 
     if (workerThreadData) {
@@ -83,7 +83,7 @@ task(function() {
         if (workerThreadData.entities && workerThreadData.entities.length > 0) {
           console.log('');
           console.log('5. Entity structure test (worker thread)');
-          var firstEntity = workerThreadData.entities[0];
+          const firstEntity = workerThreadData.entities[0];
           console.log('   First entity has blockPos: ' + (firstEntity.blockPos !== undefined));
           console.log('   First entity has pos: ' + (firstEntity.pos !== undefined));
           console.log('   First entity has nbt: ' + (firstEntity.nbt !== undefined));
@@ -98,22 +98,22 @@ task(function() {
     console.log('   SKIPPED: No structures available');
   }
   console.log('');
+}).then(() => {
+  // Summary on main thread
+  return wait(1);
+}).then(() => {
+  console.log('═══════════════════════════════════════');
+  console.log('TEST COMPLETE');
+  console.log('═══════════════════════════════════════');
 
-  // Schedule summary on main thread
-  schedule(1, function() {
-    console.log('═══════════════════════════════════════');
-    console.log('TEST COMPLETE');
-    console.log('═══════════════════════════════════════');
-
-    if (typeof Caller !== 'undefined') {
-      var buffer = new MessageBuffer(Caller);
-      buffer.log('═══════════════════════════════════');
-      buffer.log('Structure API Test Complete');
-      buffer.log('Check console logs for details');
-      buffer.log('═══════════════════════════════════');
-      buffer.send();
-    }
-  });
+  if (typeof Caller !== 'undefined') {
+    const buffer = new MessageBuffer(Caller);
+    buffer.log('═══════════════════════════════════');
+    buffer.log('Structure API Test Complete');
+    buffer.log('Check console logs for details');
+    buffer.log('═══════════════════════════════════');
+    buffer.send();
+  }
 });
 
 console.log('Main thread tests complete, worker thread tests running...');

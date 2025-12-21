@@ -6,13 +6,13 @@
  * or console (for command blocks/server).
  *
  * @example Basic Usage
- * var buffer = new MessageBuffer(Caller);
+ * let buffer = new MessageBuffer(Caller);
  * buffer.log('Processing...');
  * buffer.success('Done!');
  * buffer.send();
  *
  * @example Threading Workflow
- * var buffer = new MessageBuffer();  // No caller yet
+ * let buffer = new MessageBuffer();  // No caller yet
  *
  * task(function() {
  *     // Worker thread - buffer messages
@@ -27,7 +27,7 @@
  * });
  *
  * @example Multiple Threads
- * var buffer = new MessageBuffer();
+ * let buffer = new MessageBuffer();
  * doWork1(buffer);
  * doWork2(buffer);
  * doWork3(buffer);
@@ -51,6 +51,8 @@ function MessageBuffer(caller) {
     } else {
         this.caller = null;
     }
+    // Default to global IS_DEBUG, but can be overridden per-instance
+    this._debugEnabled = typeof IS_DEBUG !== 'undefined' ? IS_DEBUG : false;
 }
 
 /**
@@ -61,6 +63,16 @@ function MessageBuffer(caller) {
  */
 MessageBuffer.prototype.setCaller = function(caller) {
     this.caller = caller;
+}
+
+/**
+ * Override debug mode for this buffer instance.
+ * By default, uses the global IS_DEBUG constant.
+ *
+ * @param {boolean} enabled - Whether to enable debug messages for this buffer
+ */
+MessageBuffer.prototype.setDebug = function(enabled) {
+    this._debugEnabled = enabled;
 }
 
 /**
@@ -110,6 +122,18 @@ MessageBuffer.prototype.warn = function(message) {
 }
 
 /**
+ * Add a debug message to the buffer.
+ * Only added if debug mode is enabled (global IS_DEBUG or instance setDebug(true)).
+ *
+ * @param {string} message - The message to buffer
+ */
+MessageBuffer.prototype.debug = function(message) {
+    if (this._debugEnabled) {
+        this.messages.push({type: 'debug', message: message});
+    }
+}
+
+/**
  * Add a raw tellraw JSON component to the buffer.
  * Supports full Minecraft text component features like click events, hover text, etc.
  *
@@ -145,6 +169,9 @@ MessageBuffer.prototype.sendCaller = function(stopAfterOne) {
             case 'warn':
                 this.caller.sendWarning(next.message);
                 break;
+            case 'debug':
+                this.caller.sendInfo('[DEBUG] ' + next.message);
+                break;
             default:
                 this.caller.sendMessage(next.message);
         }
@@ -179,8 +206,11 @@ MessageBuffer.prototype.sendConsole = function(stopAfterOne) {
             case 'warn':
                 console.warn(next.message);
                 break;
+            case 'debug':
+                console.debug('[DEBUG] ' + next.message);
+                break;
             default:
-                console.info(next.message);
+                console.log(next.message);
         }
 
         if (!stopAfterOne) {

@@ -103,6 +103,8 @@ object ScriptRegistry {
 
     /**
      * Validate a script's syntax without executing it.
+     * Note: compileString() only validates syntax, not runtime references.
+     * Scripts with top-level Runtime references will be validated during execution.
      *
      * @param file The script file to validate
      * @return The status of the script (LOADED or ERROR)
@@ -113,6 +115,12 @@ object ScriptRegistry {
         return try {
             val cx = Context.enter()
             try {
+                cx.optimizationLevel = -1
+                cx.languageVersion = Context.VERSION_ES6
+
+                // Just validate syntax - don't execute
+                // Note: This won't catch ReferenceErrors for Runtime.env at top level
+                // Those will be caught during actual execution
                 cx.compileString(file.readText(), file.fileName.toString(), 1, null)
                 ConfigManager.debug("Syntax validation passed for: ${file.fileName}")
                 ScriptStatus.LOADED

@@ -6,6 +6,7 @@ import org.mozilla.javascript.Context
 import org.mozilla.javascript.Function
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
+import org.mozilla.javascript.ScriptRuntime
 
 /**
  * JavaScript-accessible wrapper for Structure API.
@@ -61,6 +62,15 @@ class StructureAPIWrapper(
         (get("nbt", this) as? ScriptableObject)?.setParentScope(scope)
     }
 
+    companion object {
+        /**
+         * Check if a value can be converted to a string (handles ConsString, String, etc.)
+         */
+        fun isStringLike(value: Any?): Boolean {
+            return value != null && value !is Number && value !is Boolean && value !is Scriptable
+        }
+    }
+
     /**
      * List function implementation.
      */
@@ -89,11 +99,12 @@ class StructureAPIWrapper(
      */
     private class ReadFunction(private val structureApi: StructureAPI) : BaseFunction() {
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? {
-            if (args.isEmpty() || args[0] !is String) {
-                throw IllegalArgumentException("Structure.read() requires a structure name")
+            if (args.isEmpty() || args[0] == null || args[0] is Number || args[0] is Boolean) {
+                throw ScriptRuntime.typeError("Structure.read() requires a structure name (string)")
             }
 
-            val name = args[0] as String
+            // Use ScriptRuntime.toString to handle ConsString and other JS string types
+            val name = ScriptRuntime.toString(args[0])
             val data = structureApi.read(name)
 
             // Manually convert Kotlin data structures to JavaScript objects
@@ -138,14 +149,14 @@ class StructureAPIWrapper(
     private class WriteFunction(private val structureApi: StructureAPI) : BaseFunction() {
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? {
             if (args.size < 2) {
-                throw IllegalArgumentException("Structure.write() requires name and data")
+                throw ScriptRuntime.typeError("Structure.write() requires name and data")
             }
 
-            if (args[0] !is String) {
-                throw IllegalArgumentException("First argument to Structure.write() must be a string (name)")
+            if (!isStringLike(args[0])) {
+                throw ScriptRuntime.typeError("First argument to Structure.write() must be a string (name)")
             }
 
-            val name = args[0] as String
+            val name = ScriptRuntime.toString(args[0])
             val data = Context.jsToJava(args[1], Any::class.java)
 
              // Third parameter: skipBackup (optional, defaults to false)
@@ -166,11 +177,11 @@ class StructureAPIWrapper(
      */
     private class BackupFunction(private val structureApi: StructureAPI) : BaseFunction() {
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any? {
-            if (args.isEmpty() || args[0] !is String) {
-                throw IllegalArgumentException("Structure.backup() requires a structure name")
+            if (args.isEmpty() || !isStringLike(args[0])) {
+                throw ScriptRuntime.typeError("Structure.backup() requires a structure name (string)")
             }
 
-            val name = args[0] as String
+            val name = ScriptRuntime.toString(args[0])
             val backupFilename = structureApi.backup(name)
 
             return backupFilename
@@ -182,11 +193,11 @@ class StructureAPIWrapper(
      */
     private class ListBackupsFunction(private val structureApi: StructureAPI) : BaseFunction() {
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any {
-            if (args.isEmpty() || args[0] !is String) {
-                throw IllegalArgumentException("Structure.listBackups() requires a structure name")
+            if (args.isEmpty() || !isStringLike(args[0])) {
+                throw ScriptRuntime.typeError("Structure.listBackups() requires a structure name (string)")
             }
 
-            val name = args[0] as String
+            val name = ScriptRuntime.toString(args[0])
             val backups = structureApi.listBackups(name)
 
             // Convert to JavaScript array
@@ -203,13 +214,13 @@ class StructureAPIWrapper(
      */
     private class RestoreFunction(private val structureApi: StructureAPI) : BaseFunction() {
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<Any?>): Any {
-            if (args.isEmpty() || args[0] !is String) {
-                throw IllegalArgumentException("Structure.restore() requires a structure name")
+            if (args.isEmpty() || !isStringLike(args[0])) {
+                throw ScriptRuntime.typeError("Structure.restore() requires a structure name (string)")
             }
 
-            val name = args[0] as String
-            val targetName = if (args.size > 1 && args[1] is String) args[1] as String else null
-            val backupTimestamp = if (args.size > 2 && args[2] is String) args[2] as String else null
+            val name = ScriptRuntime.toString(args[0])
+            val targetName = if (args.size > 1 && isStringLike(args[1])) ScriptRuntime.toString(args[1]) else null
+            val backupTimestamp = if (args.size > 2 && isStringLike(args[2])) ScriptRuntime.toString(args[2]) else null
 
             val success = structureApi.restore(name, targetName, backupTimestamp)
 
@@ -254,12 +265,12 @@ class NBTUtilityWrapper(private val nbtApi: NBTAPI) : ScriptableObject() {
             val topScope = thisObj?.parentScope ?: ScriptableObject.getTopLevelScope(scope)
 
             if (args.size < 2) {
-                throw IllegalArgumentException("nbt.forEach() requires data and callback")
+                throw ScriptRuntime.typeError("nbt.forEach() requires data and callback")
             }
 
             val data = Context.jsToJava(args[0], Any::class.java)
             val callback = args[1] as? org.mozilla.javascript.Function
-                ?: throw IllegalArgumentException("Second argument must be a function")
+                ?: throw ScriptRuntime.typeError("Second argument must be a function")
 
             nbtApi.forEach(data) { value, path, parent ->
                 val jsPath = cx.newObject(topScope, "Array") as org.mozilla.javascript.NativeArray
@@ -283,12 +294,12 @@ class NBTUtilityWrapper(private val nbtApi: NBTAPI) : ScriptableObject() {
             val topScope = thisObj?.parentScope ?: ScriptableObject.getTopLevelScope(scope)
 
             if (args.size < 2) {
-                throw IllegalArgumentException("nbt.filter() requires data and predicate")
+                throw ScriptRuntime.typeError("nbt.filter() requires data and predicate")
             }
 
             val data = Context.jsToJava(args[0], Any::class.java)
             val predicate = args[1] as? org.mozilla.javascript.Function
-                ?: throw IllegalArgumentException("Second argument must be a function")
+                ?: throw ScriptRuntime.typeError("Second argument must be a function")
 
             val results = nbtApi.filter(data) { value, path, parent ->
                 val jsPath = cx.newObject(topScope, "Array") as org.mozilla.javascript.NativeArray
@@ -330,12 +341,12 @@ class NBTUtilityWrapper(private val nbtApi: NBTAPI) : ScriptableObject() {
             val topScope = thisObj?.parentScope ?: ScriptableObject.getTopLevelScope(scope)
 
             if (args.size < 2) {
-                throw IllegalArgumentException("nbt.find() requires data and predicate")
+                throw ScriptRuntime.typeError("nbt.find() requires data and predicate")
             }
 
             val data = Context.jsToJava(args[0], Any::class.java)
             val predicate = args[1] as? org.mozilla.javascript.Function
-                ?: throw IllegalArgumentException("Second argument must be a function")
+                ?: throw ScriptRuntime.typeError("Second argument must be a function")
 
             val result = nbtApi.find(data) { value, path, parent ->
                 val jsPath = cx.newObject(topScope, "Array") as org.mozilla.javascript.NativeArray
@@ -372,12 +383,12 @@ class NBTUtilityWrapper(private val nbtApi: NBTAPI) : ScriptableObject() {
             val topScope = thisObj?.parentScope ?: ScriptableObject.getTopLevelScope(scope)
 
             if (args.size < 2) {
-                throw IllegalArgumentException("nbt.some() requires data and predicate")
+                throw ScriptRuntime.typeError("nbt.some() requires data and predicate")
             }
 
             val data = Context.jsToJava(args[0], Any::class.java)
             val predicate = args[1] as? org.mozilla.javascript.Function
-                ?: throw IllegalArgumentException("Second argument must be a function")
+                ?: throw ScriptRuntime.typeError("Second argument must be a function")
 
             return nbtApi.some(data) { value, path, parent ->
                 val jsPath = cx.newObject(topScope, "Array") as org.mozilla.javascript.NativeArray

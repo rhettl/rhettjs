@@ -144,54 +144,63 @@ function processPool(poolName) {
 console.log('[Painting Fixer] Starting processing workflow...');
 console.log('');
 
-try {
-    // Process each pool on worker thread
-    POOLS_TO_FIX.forEach(function(poolName, index) {
-        task(function() {
-            processPool(poolName);
+// Process all pools in parallel using Promise.all
+Promise.all(POOLS_TO_FIX.map(function(poolName) {
+    return task(function(poolName) {
+        processPool(poolName);
+        return {
+            pool: poolName,
+            structuresProcessed: stats.structuresProcessed,
+            paintingsFound: stats.paintingsFound,
+            paintingsFixed: stats.paintingsFixed
+        };
+    }, poolName);
+})).then(function(results) {
+    // Aggregate results
+    let totalStructures = 0;
+    let totalFound = 0;
+    let totalFixed = 0;
 
-            // On last pool, report final statistics
-            if (index === POOLS_TO_FIX.length - 1) {
-                schedule(5, function() {
-                    console.log('');
-                    console.log('[Painting Fixer] ═══════════════════════════════════');
-                    console.log('[Painting Fixer] FINAL STATISTICS');
-                    console.log('[Painting Fixer] ═══════════════════════════════════');
-                    console.log('[Painting Fixer] Pools processed:', stats.poolsProcessed, '/', POOLS_TO_FIX.length);
-                    console.log('[Painting Fixer] Structures processed:', stats.structuresProcessed);
-                    console.log('[Painting Fixer] Paintings found:', stats.paintingsFound);
-                    console.log('[Painting Fixer] Paintings fixed:', stats.paintingsFixed);
-
-                    if (stats.paintingsFixed > 0) {
-                        let fixRate = ((stats.paintingsFixed / stats.paintingsFound) * 100).toFixed(1);
-                        console.log('[Painting Fixer] Fix rate:', fixRate + '%');
-                        console.log('[Painting Fixer] ✓ SUCCESS - Backups created for all modified structures');
-                    } else if (stats.paintingsFound > 0) {
-                        console.log('[Painting Fixer] ✓ All paintings already have correct offsets');
-                    } else {
-                        console.log('[Painting Fixer] ⊘ No paintings found in any structures');
-                    }
-
-                    console.log('[Painting Fixer] ═══════════════════════════════════');
-                });
-            }
-        });
+    results.forEach(function(r) {
+        totalStructures += r.structuresProcessed;
+        totalFound += r.paintingsFound;
+        totalFixed += r.paintingsFixed;
     });
 
-    console.log('[Painting Fixer] Processing initiated on worker threads');
-    console.log('[Painting Fixer] Results will appear as processing completes...');
     console.log('');
+    console.log('[Painting Fixer] ═══════════════════════════════════');
+    console.log('[Painting Fixer] FINAL STATISTICS');
+    console.log('[Painting Fixer] ═══════════════════════════════════');
+    console.log('[Painting Fixer] Pools processed:', POOLS_TO_FIX.length);
+    console.log('[Painting Fixer] Structures processed:', totalStructures);
+    console.log('[Painting Fixer] Paintings found:', totalFound);
+    console.log('[Painting Fixer] Paintings fixed:', totalFixed);
 
-} catch (e) {
+    if (totalFixed > 0) {
+        let fixRate = ((totalFixed / totalFound) * 100).toFixed(1);
+        console.log('[Painting Fixer] Fix rate:', fixRate + '%');
+        console.log('[Painting Fixer] ✓ SUCCESS - Backups created for all modified structures');
+    } else if (totalFound > 0) {
+        console.log('[Painting Fixer] ✓ All paintings already have correct offsets');
+    } else {
+        console.log('[Painting Fixer] ⊘ No paintings found in any structures');
+    }
+
+    console.log('[Painting Fixer] ═══════════════════════════════════');
+}).catch(function(e) {
     console.error('[Painting Fixer] ✗ Fatal error:', e.message);
     console.error('[Painting Fixer] Stack:', e.stack);
-}
+});
+
+console.log('[Painting Fixer] Processing initiated on worker threads');
+console.log('[Painting Fixer] Results will appear as processing completes...');
+console.log('');
 
 // Explanation of what this script demonstrates:
 console.log('[Painting Fixer] ───────────────────────────────────');
 console.log('[Painting Fixer] This script demonstrates:');
 console.log('[Painting Fixer] • task() - Processing pools on worker threads');
-console.log('[Painting Fixer] • schedule() - Reporting results on main thread');
+console.log('[Painting Fixer] • Promise.all() - Parallel processing');
 console.log('[Painting Fixer] • Structure.list() - Finding structures by pool');
 console.log('[Painting Fixer] • Structure.read() - Loading structure NBT data');
 console.log('[Painting Fixer] • Structure.write() - Saving with automatic backup');

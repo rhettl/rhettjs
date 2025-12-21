@@ -64,8 +64,10 @@ class NBTAPI(
         file.parent?.let { Files.createDirectories(it) }
 
         // Create backup if file exists (unless explicitly skipped)
+        var backupFilename: String? = null
         if (!skipBackup && file.exists() && backupsDir != null) {
-            createBackup(path, file)
+            backupFilename = createBackup(path, file)
+            com.rhett.rhettjs.config.ConfigManager.debug("[NBT] Created backup: ${backupsDir?.resolve(backupFilename ?: "")}")
         }
 
         // Convert JS data to NBT
@@ -74,6 +76,12 @@ class NBTAPI(
         // Write to file
         try {
             NbtIo.writeCompressed(nbt, file)
+            com.rhett.rhettjs.config.ConfigManager.debug("[NBT] Wrote file: $file")
+            if (backupFilename != null) {
+                com.rhett.rhettjs.RhettJSCommon.LOGGER.info("[RhettJS] Saved $path (backup: $backupFilename)")
+            } else {
+                com.rhett.rhettjs.RhettJSCommon.LOGGER.info("[RhettJS] Saved $path (no backup created)")
+            }
         } catch (e: IOException) {
             throw IOException("Failed to write NBT file: $path", e)
         }
