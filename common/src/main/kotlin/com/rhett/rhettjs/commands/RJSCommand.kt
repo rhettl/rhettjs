@@ -12,6 +12,7 @@ import com.rhett.rhettjs.engine.ScriptRegistry
 import com.rhett.rhettjs.engine.ScriptResult
 import com.rhett.rhettjs.engine.ScriptStatus
 import com.rhett.rhettjs.engine.ScriptSystemInitializer
+import com.rhett.rhettjs.engine.ServerScriptManager
 import com.rhett.rhettjs.engine.GlobalsLoader
 import com.rhett.rhettjs.engine.TypeGenerator
 import net.minecraft.commands.CommandSourceStack
@@ -200,7 +201,13 @@ object RJSCommand {
         source.sendSuccess({ Component.literal("§7[RhettJS] Reloading scripts...") }, true)
 
         try {
+            // Clear and rescan scripts, reload globals
             ScriptSystemInitializer.reload(source.server.serverDirectory)
+
+            // Execute server scripts (commands, events, etc.)
+            val scriptsDir = ScriptSystemInitializer.getScriptsDirectory(source.server.serverDirectory)
+            ServerScriptManager.createAndLoad(scriptsDir)
+
             source.sendSuccess({ Component.literal("§a[RhettJS] Reload complete") }, true)
             return 1
 

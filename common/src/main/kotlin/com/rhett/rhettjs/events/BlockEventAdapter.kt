@@ -67,11 +67,45 @@ object BlockEventAdapter {
             null
         }
 
+        // Extract component data (1.20.5+ uses Data Components instead of NBT)
+        // We serialize components to a map for JavaScript access
+        val componentMap = try {
+            extractComponentData(stack)
+        } catch (e: Exception) {
+            null
+        }
+
         return ItemData(
             id = itemId,
             count = stack.count,
-            displayName = displayName
+            displayName = displayName,
+            nbt = componentMap
         )
+    }
+
+    /**
+     * Extract component data from ItemStack as a Map.
+     * In Minecraft 1.20.5+, items use Data Components instead of NBT.
+     * We extract relevant component data and present it in a map format.
+     */
+    private fun extractComponentData(stack: ItemStack): Map<String, Any?>? {
+        if (stack.components.isEmpty) return null
+
+        val dataMap = mutableMapOf<String, Any?>()
+
+        // Iterate through all components and try to serialize them
+        for (entry in stack.components) {
+            try {
+                val type = entry.type
+                val value = entry.value
+                val key = type.toString().substringAfter("minecraft:")
+                dataMap[key] = value?.toString() ?: "null"
+            } catch (e: Exception) {
+                // Skip components that can't be serialized
+            }
+        }
+
+        return if (dataMap.isNotEmpty()) dataMap else null
     }
 
     /**

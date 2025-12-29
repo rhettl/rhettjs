@@ -28,7 +28,10 @@ object NeoForgeBlockEventHandler {
             isRightClick = true
         )
 
-        BlockEventTrigger.trigger("blockRightClicked", eventData)
+        val cancelled = BlockEventTrigger.trigger("blockRightClicked", eventData, player)
+        if (cancelled) {
+            event.isCanceled = true
+        }
     }
 
     @SubscribeEvent
@@ -50,6 +53,9 @@ object NeoForgeBlockEventHandler {
             isRightClick = false
         )
 
-        BlockEventTrigger.trigger("blockLeftClicked", eventData)
+        val cancelled = BlockEventTrigger.trigger("blockLeftClicked", eventData, player)
+        if (cancelled) {
+            event.isCanceled = true
+        }
     }
 }

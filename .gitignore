@@ -55,3 +55,4 @@ dev-docs/
 # Test scripts (for local testing only)
 build-test*.sh
 
+.aider*

@@ -113,8 +113,11 @@ class TaskAPI : BaseFunction() {
         // Auto-discover thread-safe APIs from scope
         val threadSafeAPIs = getThreadSafeAPIs(scope)
 
+        // Capture current event loop (task() must be called within event loop context)
+        val eventLoop = com.rhett.rhettjs.threading.EventLoop.getCurrent()
+
         // Submit to worker pool
-        WorkerPool.submit(callback, callbackArgs, resolve, reject, scope, threadSafeAPIs)
+        WorkerPool.submit(callback, callbackArgs, resolve, reject, scope, threadSafeAPIs, eventLoop)
 
         return promise
     }

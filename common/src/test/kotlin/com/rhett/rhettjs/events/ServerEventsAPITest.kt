@@ -579,7 +579,7 @@ class ServerEventsAPITest {
                 position = BlockPosition(10, 64, 20, "minecraft:overworld"),
                 block = BlockData("minecraft:stone"),
                 player = PlayerData("TestPlayer", "test-uuid", false),
-                item = ItemData("minecraft:stick", 1, null),
+                item = ItemData("minecraft:stick", 1, null, null),
                 face = BlockFace.UP,
                 isRightClick = true
             )
@@ -599,7 +599,7 @@ class ServerEventsAPITest {
                     posY: capturedEvent.position.y === 64,
                     posZ: capturedEvent.position.z === 20,
                     blockId: capturedEvent.block.id === 'minecraft:stone',
-                    playerName: capturedEvent.player.name === 'TestPlayer',
+                    playerName: capturedEvent.playerData.name === 'TestPlayer',
                     itemId: capturedEvent.item.id === 'minecraft:stick',
                     face: capturedEvent.face === 'UP',
                     isRightClick: capturedEvent.isRightClick === true

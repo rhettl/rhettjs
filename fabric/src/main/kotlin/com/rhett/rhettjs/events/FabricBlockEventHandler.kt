@@ -35,9 +35,9 @@ object FabricBlockEventHandler {
                 isRightClick = true
             )
 
-            BlockEventTrigger.trigger("blockRightClicked", eventData)
+            val cancelled = BlockEventTrigger.trigger("blockRightClicked", eventData, player)
 
-            InteractionResult.PASS
+            if (cancelled) InteractionResult.FAIL else InteractionResult.PASS
         }
 
         // Left-click on block
@@ -58,9 +58,9 @@ object FabricBlockEventHandler {
                 isRightClick = false
             )
 
-            BlockEventTrigger.trigger("blockLeftClicked", eventData)
+            val cancelled = BlockEventTrigger.trigger("blockLeftClicked", eventData, player)
 
-            InteractionResult.PASS
+            if (cancelled) InteractionResult.FAIL else InteractionResult.PASS
         }
 
         com.rhett.rhettjs.RhettJSCommon.LOGGER.info("[RhettJS] Registered Fabric block event handlers")

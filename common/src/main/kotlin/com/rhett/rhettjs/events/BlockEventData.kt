@@ -36,7 +36,8 @@ data class BlockData(
 data class ItemData(
     val id: String,
     val count: Int,
-    val displayName: String?
+    val displayName: String?,
+    val nbt: Map<String, Any?>?
 )
 
 /**

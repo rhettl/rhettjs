@@ -98,9 +98,9 @@ object ScriptSystemInitializer {
         RhettJSCommon.LOGGER.info("[RhettJS] Reloading globals...")
         GlobalsLoader.reload(scriptsDir)
 
-        // Note: Server scripts will reload on next data pack reload via ServerScriptManager
+        // Note: Server scripts execution is handled by caller (RJSCommand or data pack reload)
         // Startup scripts are NOT reloaded (require full server restart)
-        RhettJSCommon.LOGGER.info("[RhettJS] Server scripts will reload on next /reload (data pack reload)")
+        RhettJSCommon.LOGGER.info("[RhettJS] Globals reloaded - ready for server script execution")
         RhettJSCommon.LOGGER.warn("[RhettJS] Startup scripts NOT reloaded - full restart required for dimension changes")
     }
 
@@ -110,7 +110,7 @@ object ScriptSystemInitializer {
      * @param serverDirectory The server directory, or null during mod initialization
      * @return The scripts directory path
      */
-    private fun getScriptsDirectory(serverDirectory: Path?): Path {
+    fun getScriptsDirectory(serverDirectory: Path?): Path {
         // During mod init, we don't have server directory yet
         if (serverDirectory == null) {
             return Paths.get("rjs")

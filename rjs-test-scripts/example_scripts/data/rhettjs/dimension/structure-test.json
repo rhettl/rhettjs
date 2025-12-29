@@ -1,0 +1,13 @@
+{
+  "type": "rhettjs:structure-test",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "minecraft:plains",
+      "layers": [],
+      "features": false,
+      "lakes": false,
+      "structure_overrides": {}
+    }
+  }
+}

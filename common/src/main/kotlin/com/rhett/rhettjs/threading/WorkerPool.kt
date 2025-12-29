@@ -52,6 +52,7 @@ object WorkerPool {
      * @param reject Promise reject function
      * @param scope The scope for Promise resolution
      * @param threadSafeAPIs APIs to inject into worker scope
+     * @param eventLoop The event loop to post results to
      */
     fun submit(
         callback: RhinoFunction,
@@ -59,7 +60,8 @@ object WorkerPool {
         resolve: RhinoFunction,
         reject: RhinoFunction,
         scope: Scriptable,
-        threadSafeAPIs: Map<String, Any>
+        threadSafeAPIs: Map<String, Any>,
+        eventLoop: EventLoop?
     ) {
         pendingTasks.incrementAndGet()
         
@@ -107,9 +109,8 @@ object WorkerPool {
             } finally {
                 pendingTasks.decrementAndGet()
             }
-            
+
             // Post result to event loop
-            val eventLoop = EventLoop.getCurrent()
             if (eventLoop != null) {
                 eventLoop.postWorkerResult(
                     EventLoop.WorkerResult(
@@ -121,7 +122,7 @@ object WorkerPool {
                     )
                 )
             } else {
-                RhettJSCommon.LOGGER.warn("[RhettJS] No event loop to post worker result")
+                RhettJSCommon.LOGGER.warn("[RhettJS] No event loop to post worker result - task() called outside event loop context")
             }
         }
     }

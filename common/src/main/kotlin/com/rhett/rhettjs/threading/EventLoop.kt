@@ -135,13 +135,25 @@ class EventLoop(
             }
 
             // Process worker results
+            var processedResults = 0
             while (true) {
                 val result = workerResults.poll() ?: break
                 processWorkerResult(result)
+                processedResults++
             }
 
-            // Process microtasks
-            context.processMicrotasks()
+            // Process microtasks (including .then() callbacks)
+            if (processedResults > 0) {
+                RhettJSCommon.LOGGER.info("[RhettJS] Calling processMicrotasks after processing $processedResults worker results...")
+            }
+            try {
+                context.processMicrotasks()
+                if (processedResults > 0) {
+                    RhettJSCommon.LOGGER.info("[RhettJS] processMicrotasks completed successfully")
+                }
+            } catch (e: Exception) {
+                RhettJSCommon.LOGGER.error("[RhettJS] Error in processMicrotasks", e)
+            }
 
             // Check if done
             if (workerResults.isEmpty() && waitTimers.isEmpty() && !WorkerPool.hasPendingTasks()) {
@@ -170,10 +182,13 @@ class EventLoop(
     private fun processWorkerResult(result: WorkerResult) {
         try {
             if (result.error != null) {
+                RhettJSCommon.LOGGER.info("[RhettJS] Processing worker error result")
                 val errorObj = Context.javaToJS(result.error, result.scope)
                 result.reject.call(context, result.scope, result.scope, arrayOf(errorObj))
             } else {
+                RhettJSCommon.LOGGER.info("[RhettJS] Processing worker success result")
                 result.resolve.call(context, result.scope, result.scope, arrayOf(result.result))
+                RhettJSCommon.LOGGER.info("[RhettJS] Worker result resolved, microtasks should now be queued")
             }
         } catch (e: Exception) {
             RhettJSCommon.LOGGER.error("[RhettJS] Error processing worker result", e)

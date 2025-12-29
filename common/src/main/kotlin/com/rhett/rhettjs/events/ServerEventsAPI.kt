@@ -117,13 +117,13 @@ object ServerEventsAPI {
                 val scope = builderFunction.parentScope
                     ?: throw IllegalStateException("Builder function has no parent scope")
 
-                // Create SimpleCommandBuilder instance
-                val builder = SimpleCommandBuilder(commandName, scope)
+                // Create BrigadierCommandBuilder instance (full Brigadier API)
+                val builder = com.rhett.rhettjs.commands.BrigadierCommandBuilder(commandName, scope)
 
                 // Wrap the builder for JavaScript access
                 val wrappedBuilder = Context.javaToJS(builder, scope)
 
-                // Call the builder function with the wrapped SimpleCommandBuilder
+                // Call the builder function with the wrapped BrigadierCommandBuilder
                 builderFunction.call(cx, scope, scope, arrayOf(wrappedBuilder))
 
                 // Process any microtasks
@@ -131,6 +131,10 @@ object ServerEventsAPI {
 
                 // Get the built command
                 val builtCommand = builder.build()
+                if (builtCommand == null) {
+                    throw IllegalStateException("Command '$commandName' was not properly built. Did you forget to call builder.literal('$commandName')?")
+                }
+
                 RhettJSCommon.LOGGER.info("[RhettJS] Built command structure for: /$commandName")
 
                 // Store it
@@ -304,28 +308,44 @@ object ServerEventsAPI {
      * @param eventType The event type (e.g., "blockRightClicked")
      * @param scope The JavaScript scope to execute in
      * @param eventData The block event data
+     * @param playerObject The actual Minecraft player object (for messaging)
      */
-    fun triggerBlockEvent(eventType: String, scope: Scriptable, eventData: BlockEventData) {
-        val eventHandlers = blockHandlers[eventType] ?: return
+    fun triggerBlockEvent(
+        eventType: String,
+        scope: Scriptable,
+        eventData: BlockEventData,
+        playerObject: net.minecraft.world.entity.player.Player? = null
+    ): Boolean {
+        val eventHandlers = blockHandlers[eventType] ?: return false
 
         // Filter handlers that match the block type
         val matchingHandlers = eventHandlers.filter { handler ->
             handler.blockFilter == null || handler.blockFilter == eventData.block.id
         }
 
-        if (matchingHandlers.isEmpty()) return
+        if (matchingHandlers.isEmpty()) return false
 
         RhettJSCommon.LOGGER.debug("[RhettJS] Triggering ${matchingHandlers.size} handlers for: $eventType (block: ${eventData.block.id})")
+
+        var cancelled = false
 
         matchingHandlers.forEach { blockHandler ->
             try {
                 val cx = Context.getCurrentContext()
 
-                // Convert BlockEventData to JavaScript object
-                val event = convertBlockEventToJS(cx, scope, eventData)
+                // Convert BlockEventData to JavaScript object with messaging capability
+                val event = convertBlockEventToJS(cx, scope, eventData, playerObject)
 
                 // Call handler
                 blockHandler.handler.call(cx, scope, scope, arrayOf(event))
+
+                // Check if event was cancelled
+                if (event is org.mozilla.javascript.Scriptable) {
+                    val cancelledProp = org.mozilla.javascript.ScriptableObject.getProperty(event, "cancelled")
+                    if (cancelledProp is Boolean && cancelledProp) {
+                        cancelled = true
+                    }
+                }
 
                 // Process microtasks (Promise .then() callbacks)
                 cx.processMicrotasks()
@@ -335,12 +355,20 @@ object ServerEventsAPI {
                 // Continue with other handlers
             }
         }
+
+        return cancelled
     }
 
     /**
-     * Convert BlockEventData to a JavaScript object.
+     * Convert BlockEventData to a JavaScript object with messaging capabilities.
+     * If playerObject is provided, adds sendMessage/sendSuccess/etc methods (like Caller API).
      */
-    private fun convertBlockEventToJS(cx: Context, scope: Scriptable, eventData: BlockEventData): Scriptable {
+    private fun convertBlockEventToJS(
+        cx: Context,
+        scope: Scriptable,
+        eventData: BlockEventData,
+        playerObject: net.minecraft.world.entity.player.Player?
+    ): Scriptable {
         val event = cx.newObject(scope)
 
         // Add position data
@@ -359,11 +387,17 @@ object ServerEventsAPI {
 
         // Add player data (if present)
         eventData.player?.let { playerData ->
-            val player = cx.newObject(scope)
-            ScriptableObject.putProperty(player, "name", playerData.name)
-            ScriptableObject.putProperty(player, "uuid", playerData.uuid)
-            ScriptableObject.putProperty(player, "isCreative", playerData.isCreative)
-            ScriptableObject.putProperty(event, "player", player)
+            val playerDataObj = cx.newObject(scope)
+            ScriptableObject.putProperty(playerDataObj, "name", playerData.name)
+            ScriptableObject.putProperty(playerDataObj, "uuid", playerData.uuid)
+            ScriptableObject.putProperty(playerDataObj, "isCreative", playerData.isCreative)
+            ScriptableObject.putProperty(event, "playerData", playerDataObj)
+
+            // Add the actual player object if available
+            // This gives access to the full ServerPlayer API
+            if (playerObject != null) {
+                ScriptableObject.putProperty(event, "player", Context.javaToJS(playerObject, scope))
+            }
         }
 
         // Add event-specific data
@@ -375,6 +409,7 @@ object ServerEventsAPI {
                     ScriptableObject.putProperty(item, "id", itemData.id)
                     ScriptableObject.putProperty(item, "count", itemData.count)
                     itemData.displayName?.let { ScriptableObject.putProperty(item, "displayName", it) }
+                    itemData.nbt?.let { ScriptableObject.putProperty(item, "nbt", Context.javaToJS(it, scope)) }
                     ScriptableObject.putProperty(event, "item", item)
                 }
                 eventData.face?.let { ScriptableObject.putProperty(event, "face", it.name) }
@@ -390,6 +425,8 @@ object ServerEventsAPI {
                     val item = cx.newObject(scope)
                     ScriptableObject.putProperty(item, "id", itemData.id)
                     ScriptableObject.putProperty(item, "count", itemData.count)
+                    itemData.displayName?.let { ScriptableObject.putProperty(item, "displayName", it) }
+                    itemData.nbt?.let { ScriptableObject.putProperty(item, "nbt", Context.javaToJS(it, scope)) }
                     ScriptableObject.putProperty(event, "item", item)
                 }
             }
@@ -405,6 +442,161 @@ object ServerEventsAPI {
                 ScriptableObject.putProperty(event, "drops", drops)
             }
         }
+
+        // Add messaging methods if player object is available
+        // This makes the event compatible with MessageBuffer and provides Caller-like API
+        playerObject?.let { player ->
+            val server = player.server
+
+            // sendMessage() - regular message
+            val sendMessageFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val message = args[0].toString()
+                    server?.execute {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(message))
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendMessage", sendMessageFunc)
+
+            // sendSuccess() - green message
+            val sendSuccessFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val message = args[0].toString()
+                    server?.execute {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§a$message"))
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendSuccess", sendSuccessFunc)
+
+            // sendError() - red message
+            val sendErrorFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val message = args[0].toString()
+                    server?.execute {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§c$message"))
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendError", sendErrorFunc)
+
+            // sendWarning() - yellow message
+            val sendWarningFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val message = args[0].toString()
+                    server?.execute {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§e$message"))
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendWarning", sendWarningFunc)
+
+            // sendInfo() - gray message
+            val sendInfoFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val message = args[0].toString()
+                    server?.execute {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§7$message"))
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendInfo", sendInfoFunc)
+
+            // sendRaw() - raw JSON component
+            val sendRawFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    if (args.isEmpty()) return Context.getUndefinedValue()
+                    val json = args[0].toString()
+                    server?.execute {
+                        try {
+                            val component = net.minecraft.network.chat.Component.Serializer.fromJson(
+                                json,
+                                player.level().registryAccess()
+                            )
+                            if (component != null) {
+                                player.sendSystemMessage(component)
+                            }
+                        } catch (e: Exception) {
+                            player.sendSystemMessage(
+                                net.minecraft.network.chat.Component.literal("§c[RhettJS] Failed to parse JSON: ${e.message}")
+                            )
+                        }
+                    }
+                    return Context.getUndefinedValue()
+                }
+            }
+            ScriptableObject.putProperty(event, "sendRaw", sendRawFunc)
+
+            // isPlayer() - always returns true since we have a player object
+            val isPlayerFunc = object : org.mozilla.javascript.BaseFunction() {
+                override fun call(
+                    cx: Context,
+                    scope: Scriptable,
+                    thisObj: Scriptable?,
+                    args: Array<Any?>
+                ): Any {
+                    return true
+                }
+            }
+            ScriptableObject.putProperty(event, "isPlayer", isPlayerFunc)
+        }
+
+        // Add cancellation support
+        ScriptableObject.putProperty(event, "cancelled", false)
+
+        val cancelFunc = object : org.mozilla.javascript.BaseFunction() {
+            override fun call(
+                cx: Context,
+                scope: Scriptable,
+                thisObj: Scriptable?,
+                args: Array<Any?>
+            ): Any {
+                ScriptableObject.putProperty(event, "cancelled", true)
+                return Context.getUndefinedValue()
+            }
+        }
+        ScriptableObject.putProperty(event, "cancel", cancelFunc)
 
         return event
     }

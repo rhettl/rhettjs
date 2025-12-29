@@ -68,7 +68,7 @@ class SimpleCommandBuilder(
                         scope.put("Command", scope, commandWrapper)
                     }
 
-                    val wrappedContext = Context.javaToJS(context, scope)
+                    val wrappedContext = context.wrapForJavaScript(scope)
                     val result = handler.call(cx, scope, scope, arrayOf(wrappedContext))
                     cx.processMicrotasks()
 

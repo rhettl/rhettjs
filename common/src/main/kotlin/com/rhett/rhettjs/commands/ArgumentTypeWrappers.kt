@@ -9,6 +9,7 @@ import net.minecraft.commands.arguments.blocks.BlockStateArgument
 import net.minecraft.commands.arguments.coordinates.*
 import net.minecraft.commands.arguments.item.ItemArgument
 import net.minecraft.commands.arguments.item.ItemPredicateArgument
+import org.mozilla.javascript.Context
 import org.mozilla.javascript.NativeJavaObject
 import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
@@ -275,11 +276,24 @@ open class ArgumentTypeWrapper<T>(
      */
     fun get(context: Any, name: String): T? {
         return try {
-            // Unwrap if it's a NativeJavaObject
-            val ctx = if (context is NativeJavaObject) {
-                context.unwrap() as CommandContext<CommandSourceStack>
-            } else {
-                context as CommandContext<CommandSourceStack>
+            // Handle wrapped context (plain JS object with unwrap() method)
+            val ctx = when {
+                context is Scriptable && context.has("unwrap", context) -> {
+                    // Call unwrap() to get the raw context
+                    val unwrapFunc = context.get("unwrap", context) as? org.mozilla.javascript.Function
+                    val unwrapped = unwrapFunc?.call(Context.getCurrentContext(), context, context, emptyArray())
+                    if (unwrapped is NativeJavaObject) {
+                        unwrapped.unwrap() as CommandContext<CommandSourceStack>
+                    } else {
+                        unwrapped as CommandContext<CommandSourceStack>
+                    }
+                }
+                context is NativeJavaObject -> {
+                    context.unwrap() as CommandContext<CommandSourceStack>
+                }
+                else -> {
+                    context as CommandContext<CommandSourceStack>
+                }
             }
             getter(ctx, name)
         } catch (e: Exception) {

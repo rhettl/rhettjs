@@ -2,7 +2,7 @@
 
 Auto-generated type definitions for IDE autocomplete.
 
-**Generated**: 2025-12-25T11:37:42.838218
+**Generated**: 2025-12-26T15:36:25.695456
 
 ## Files
 
