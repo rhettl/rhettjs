@@ -119,9 +119,9 @@ object ScriptRegistry {
                 .build()
 
             // Just building the source is not enough - we need to parse it
-            // Use a minimal context with allowAllAccess to avoid reference errors
+            // Use a minimal sandboxed context for syntax validation only
             org.graalvm.polyglot.Context.newBuilder("js")
-                .allowAllAccess(true)
+                .allowExperimentalOptions(true)
                 .option("engine.WarnInterpreterOnly", "false")
                 .build().use { context ->
                     // Parse validates syntax without executing

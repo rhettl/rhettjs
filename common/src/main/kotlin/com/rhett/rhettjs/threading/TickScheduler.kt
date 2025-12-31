@@ -1,11 +1,13 @@
 package com.rhett.rhettjs.threading
 
+import com.rhett.rhettjs.async.AsyncScheduler
+
 /**
- * Singleton manager for tick processing.
+ * Singleton manager for tick processing with GraalVM AsyncScheduler.
  *
  * This object:
  * 1. Exposes tick() method for game loop integration
- * 2. Ticks the current EventLoop to process wait timers
+ * 2. Ticks the AsyncScheduler to process wait timers
  * 3. Allows platform-specific code to call tick() each game tick
  */
 object TickScheduler {
@@ -19,17 +21,15 @@ object TickScheduler {
      * - NeoForge: TickEvent.ServerTickEvent (Phase.END)
      */
     fun tick() {
-        // TODO: Implement GraalVM async scheduler tick
-        // EventLoop.getCurrent()?.tick()
+        AsyncScheduler.tick()
     }
 
     /**
-     * Cancel all pending work in the current event loop.
-     * Called by Runtime.exit() to stop script execution.
+     * Cancel all pending work in the async scheduler.
+     * Called during script shutdown or server stop.
      */
     fun cancelAll() {
-        // TODO: Implement GraalVM async scheduler shutdown
-        // EventLoop.getCurrent()?.shutdown()
+        AsyncScheduler.clear()
     }
 
     /**
@@ -37,7 +37,6 @@ object TickScheduler {
      * Called on script reload.
      */
     fun reset() {
-        // TODO: Implement GraalVM async scheduler reset
-        // EventLoop.getCurrent()?.reset()
+        AsyncScheduler.clear()
     }
 }
