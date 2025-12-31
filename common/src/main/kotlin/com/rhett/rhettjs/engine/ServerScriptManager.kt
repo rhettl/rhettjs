@@ -18,7 +18,6 @@ object ServerScriptManager {
 
     private var loadedScriptsPath: Path? = null
     private var hasLoaded = false
-    private var serverScope: org.mozilla.javascript.Scriptable? = null
 
     /**
      * Create and load server scripts.
@@ -53,7 +52,7 @@ object ServerScriptManager {
                 RhettJSCommon.LOGGER.info("[RhettJS] Executing ${serverScripts.size} server script(s)...")
                 serverScripts.forEach { script ->
                     try {
-                        ScriptEngine.executeScript(script)
+                        GraalEngine.executeScript(script)
                         ConfigManager.debug("Executed server script: ${script.name}")
                     } catch (e: Exception) {
                         RhettJSCommon.LOGGER.error("[RhettJS] Failed to execute server script: ${script.name}", e)

@@ -35,8 +35,10 @@ dependencies {
     // JSON5 parser
     implementation("de.marhali:json5-java:3.0.0")
 
-    // Rhino JavaScript engine
-    implementation("org.mozilla:rhino:1.8.1")
+    // GraalVM JavaScript engine
+    implementation("org.graalvm.polyglot:polyglot:24.1.0")
+    implementation("org.graalvm.polyglot:js:24.1.0")
+    implementation("org.graalvm.polyglot:js-community:24.1.0")
 
     // JUnit 5 for testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
