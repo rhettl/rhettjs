@@ -68,9 +68,12 @@ dependencies {
     shade("de.marhali:json5-java:3.0.0")
 
     // GraalVM JavaScript engine (shaded into jar)
+    // Note: We depend on the actual JAR artifacts, not the POM-only js-community
+    // to avoid IntelliJ incorrectly adding POM files to the classpath
     shade("org.graalvm.polyglot:polyglot:24.1.0")
-    shade("org.graalvm.polyglot:js:24.1.0")
-    shade("org.graalvm.polyglot:js-community:24.1.0")
+    shade("org.graalvm.js:js-community:24.1.0")
+    shade("org.graalvm.js:js-language:24.1.0")
+    shade("org.graalvm.truffle:truffle-runtime:24.1.0")
 
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
@@ -98,6 +101,9 @@ tasks.shadowJar {
     exclude("architectury.common.json")
     configurations = listOf(shadowCommon, shade)
     archiveClassifier.set("dev-shadow")
+
+    // Merge service files for GraalVM language registration
+    mergeServiceFiles()
 
     // Relocate JSON5 to avoid conflicts with other mods
     relocate("de.marhali.json5", "com.rhett.rhettjs.shadow.json5")

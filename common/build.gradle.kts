@@ -36,9 +36,12 @@ dependencies {
     implementation("de.marhali:json5-java:3.0.0")
 
     // GraalVM JavaScript engine
+    // Note: We depend on the actual JAR artifacts, not the POM-only js-community
+    // to avoid IntelliJ incorrectly adding POM files to the classpath
     implementation("org.graalvm.polyglot:polyglot:24.1.0")
-    implementation("org.graalvm.polyglot:js:24.1.0")
-    implementation("org.graalvm.polyglot:js-community:24.1.0")
+    implementation("org.graalvm.js:js-community:24.1.0")
+    implementation("org.graalvm.js:js-language:24.1.0")
+    implementation("org.graalvm.truffle:truffle-runtime:24.1.0")
 
     // JUnit 5 for testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
