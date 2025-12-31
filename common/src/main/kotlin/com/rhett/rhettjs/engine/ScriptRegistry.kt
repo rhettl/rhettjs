@@ -103,8 +103,7 @@ object ScriptRegistry {
 
     /**
      * Validate a script's syntax without executing it.
-     * Note: compileString() only validates syntax, not runtime references.
-     * Scripts with top-level Runtime references will be validated during execution.
+     * Uses GraalVM's parser to check for syntax errors only.
      *
      * @param file The script file to validate
      * @return The status of the script (LOADED or ERROR)
@@ -112,10 +111,38 @@ object ScriptRegistry {
     private fun validateScript(file: Path): ScriptStatus {
         ConfigManager.debug("Validating syntax for: ${file.fileName}")
 
-        // TODO: Implement syntax validation using GraalVM
-        // For now, just mark as loaded - GraalVM will validate during execution
-        ConfigManager.debug("Syntax validation skipped (TODO: implement for GraalVM)")
-        return ScriptStatus.LOADED
+        return try {
+            // Create source and let GraalVM parse it
+            // This will throw PolyglotException with isSyntaxError=true for syntax errors
+            val source = org.graalvm.polyglot.Source.newBuilder("js", file.toFile())
+                .name(file.fileName.toString())
+                .build()
+
+            // Just building the source is not enough - we need to parse it
+            // Use a minimal context with allowAllAccess to avoid reference errors
+            org.graalvm.polyglot.Context.newBuilder("js")
+                .allowAllAccess(true)
+                .option("engine.WarnInterpreterOnly", "false")
+                .build().use { context ->
+                    // Parse validates syntax without executing
+                    context.parse(source)
+                }
+
+            ConfigManager.debug("Syntax validation passed for: ${file.fileName}")
+            ScriptStatus.LOADED
+        } catch (e: org.graalvm.polyglot.PolyglotException) {
+            if (e.isSyntaxError) {
+                ConfigManager.debug("Syntax error in ${file.fileName}: ${e.message}")
+                ScriptStatus.ERROR
+            } else {
+                // Other errors (e.g., reference errors) - treat as loaded, will fail at runtime
+                ConfigManager.debug("Non-syntax error during validation: ${e.message}")
+                ScriptStatus.LOADED
+            }
+        } catch (e: Exception) {
+            ConfigManager.debug("Unexpected error validating ${file.fileName}: ${e.message}")
+            ScriptStatus.ERROR
+        }
     }
 
     /**

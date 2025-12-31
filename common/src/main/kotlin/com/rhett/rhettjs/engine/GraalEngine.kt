@@ -6,6 +6,8 @@ import org.graalvm.polyglot.Context
 import org.graalvm.polyglot.PolyglotException
 import org.graalvm.polyglot.Source
 import org.graalvm.polyglot.Value
+import org.graalvm.polyglot.proxy.ProxyExecutable
+import org.graalvm.polyglot.proxy.ProxyObject
 
 /**
  * GraalVM JavaScript engine management.
@@ -83,7 +85,11 @@ object GraalEngine {
     ) {
         val bindings = context.getBindings("js")
 
-        // TODO: Phase 2 - Inject Console API
+        // Inject Console API
+        val console = createConsoleAPI()
+        bindings.putMember("console", console)
+        ConfigManager.debug("Injected Console API")
+
         // TODO: Phase 3 - Inject Runtime API
         // TODO: Phase 5 - Inject Store API
         // TODO: Phase 6 - Inject Structure API
@@ -95,7 +101,65 @@ object GraalEngine {
             ConfigManager.debug("Injected binding: $name")
         }
 
-        ConfigManager.debug("Injected ${additionalBindings.size} bindings for category: $category")
+        ConfigManager.debug("Injected ${1 + additionalBindings.size} bindings for category: $category")
+    }
+
+    /**
+     * Create the Console API for JavaScript scripts.
+     * Provides console.log, console.warn, console.error, console.info, console.debug
+     */
+    private fun createConsoleAPI(): ProxyObject {
+        return ProxyObject.fromMap(mapOf(
+            "log" to ProxyExecutable { args ->
+                val message = args.joinToString(" ") { formatValue(it) }
+                RhettJSCommon.LOGGER.info("[RhettJS-Script] $message")
+                null
+            },
+            "warn" to ProxyExecutable { args ->
+                val message = args.joinToString(" ") { formatValue(it) }
+                RhettJSCommon.LOGGER.warn("[RhettJS-Script] $message")
+                null
+            },
+            "error" to ProxyExecutable { args ->
+                val message = args.joinToString(" ") { formatValue(it) }
+                RhettJSCommon.LOGGER.error("[RhettJS-Script] $message")
+                null
+            },
+            "info" to ProxyExecutable { args ->
+                val message = args.joinToString(" ") { formatValue(it) }
+                RhettJSCommon.LOGGER.info("[RhettJS-Script] $message")
+                null
+            },
+            "debug" to ProxyExecutable { args ->
+                val message = args.joinToString(" ") { formatValue(it) }
+                ConfigManager.debug("[Script] $message")
+                null
+            }
+        ))
+    }
+
+    /**
+     * Format a GraalVM Value for console output.
+     * Handles primitives, objects, arrays, etc.
+     */
+    private fun formatValue(value: Value): String {
+        return when {
+            value.isNull -> "null"
+            value.isString -> value.asString()
+            value.isNumber -> value.toString()
+            value.isBoolean -> value.asBoolean().toString()
+            value.hasArrayElements() -> {
+                val elements = (0 until value.arraySize).map { formatValue(value.getArrayElement(it)) }
+                "[${elements.joinToString(", ")}]"
+            }
+            value.hasMembers() -> {
+                val members = value.memberKeys.map { key ->
+                    "$key: ${formatValue(value.getMember(key))}"
+                }
+                "{${members.joinToString(", ")}}"
+            }
+            else -> value.toString()
+        }
     }
 
     /**
