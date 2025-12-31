@@ -68,6 +68,11 @@ dependencies {
     // JSON5 parser (shaded into jar)
     shade("de.marhali:json5-java:3.0.0")
 
+    // GraalVM JavaScript engine (shaded into jar)
+    shade("org.graalvm.polyglot:polyglot:24.1.0")
+    shade("org.graalvm.polyglot:js:24.1.0")
+    shade("org.graalvm.polyglot:js-community:24.1.0")
+
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")

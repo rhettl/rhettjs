@@ -67,8 +67,10 @@ dependencies {
     // JSON5 parser (shaded into jar)
     shade("de.marhali:json5-java:3.0.0")
 
-    // Rhino JavaScript engine (shaded into jar)
-    shade("org.mozilla:rhino:1.8.1")
+    // GraalVM JavaScript engine (shaded into jar)
+    shade("org.graalvm.polyglot:polyglot:24.1.0")
+    shade("org.graalvm.polyglot:js:24.1.0")
+    shade("org.graalvm.polyglot:js-community:24.1.0")
 
     // Testing
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
@@ -100,8 +102,8 @@ tasks.shadowJar {
     // Relocate JSON5 to avoid conflicts with other mods
     relocate("de.marhali.json5", "com.rhett.rhettjs.shadow.json5")
 
-    // Don't relocate Rhino - it uses dynamic class loading that breaks with relocation
-    // Conflicts are unlikely since Rhino isn't common in Minecraft mods
+    // Don't relocate GraalVM - it uses complex reflection and dynamic loading
+    // Relocation would break the polyglot engine initialization
 }
 
 tasks.remapJar {
