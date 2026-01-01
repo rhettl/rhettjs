@@ -5,8 +5,8 @@ console.log("=".repeat(50));
 console.log("Module Import Test (Testing Dir)");
 console.log("=".repeat(50));
 
-// Import from modules/
-import { formatMessage, logTest } from './test-helper.js';
+// Import from testing/modules/ (relative path from startup/ to modules/)
+import { formatMessage, logTest } from '../modules/test-helper.js';
 
 console.log("\n" + formatMessage("TEST", "Testing module imports from testing/"));
 

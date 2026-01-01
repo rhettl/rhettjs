@@ -53,12 +53,18 @@ object GraalEngine {
             .option("js.top-level-await", "true")  // Enable top-level await
 
         // Enable file system access for ES6 imports
-        // Set currentWorkingDirectory to modules/ so all imports resolve from there
+        // TODO: Module resolution currently uses actual file paths, not virtual paths
+        //       This means imports are relative to the script's actual location:
+        //       - startup/init.js: import X from '../modules/x.js'
+        //       - scripts/util.js: import X from '../modules/x.js'
+        //       Goal: Make all imports resolve from modules/ directory
+        //       - startup/init.js: import X from './x.js' (resolves to modules/x.js)
+        //       This requires custom module loader hooks or import transformation
         if (scriptsBaseDir != null) {
             val modulesDir = scriptsBaseDir!!.resolve("modules")
             builder.allowIO(true)
             builder.currentWorkingDirectory(modulesDir)
-            ConfigManager.debug("Set import resolution base: $modulesDir")
+            ConfigManager.debug("Set import resolution base: $modulesDir (virtual URI not working yet)")
         }
 
         return builder.build()
@@ -83,16 +89,20 @@ object GraalEngine {
             injectBindings(context, script.category, additionalBindings)
 
             // Create source from file with virtual URI in modules/ for import resolution
-            // This makes GraalVM think the script is IN modules/, so imports resolve from there
+            // TODO: Virtual URI doesn't affect import resolution in GraalVM
+            //       GraalVM resolves imports relative to actual file location
+            //       Need to implement custom module loader or transform imports
             val source = if (scriptsBaseDir != null) {
                 val virtualUri = scriptsBaseDir!!.resolve("modules/${script.name}.js").toUri()
                 Source.newBuilder("js", script.path.toFile())
                     .name(script.name)
-                    .uri(virtualUri)  // Virtual path for import resolution
+                    .uri(virtualUri)  // Virtual path (doesn't work for imports yet)
+                    .mimeType("application/javascript+module")  // Enable ES6 module parsing
                     .build()
             } else {
                 Source.newBuilder("js", script.path.toFile())
                     .name(script.name)
+                    .mimeType("application/javascript+module")  // Enable ES6 module parsing
                     .build()
             }
 
