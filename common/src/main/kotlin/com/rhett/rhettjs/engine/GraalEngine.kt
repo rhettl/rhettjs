@@ -1267,7 +1267,7 @@ object GraalEngine {
 
     /**
      * Inject Script.* context for utility scripts (rjs/scripts/).
-     * Provides Script.caller and Script.args for command-invoked scripts.
+     * Provides Script.caller, Script.args, and Script.argv for command-invoked scripts.
      */
     private fun injectScriptContext(bindings: Value, additionalBindings: Map<String, Any>) {
         // Extract Caller and Args from additionalBindings if provided
@@ -1279,10 +1279,95 @@ object GraalEngine {
             if (caller != null) scriptContext["caller"] = caller
             if (args != null) scriptContext["args"] = args
 
+            // Parse args into Script.argv if Args is provided
+            if (args != null) {
+                scriptContext["argv"] = createArgvProxy(args)
+            }
+
             val scriptProxy = ProxyObject.fromMap(scriptContext)
             bindings.putMember("Script", scriptProxy)
-            ConfigManager.debug("Injected Script.caller and Script.args")
+            ConfigManager.debug("Injected Script.caller, Script.args, and Script.argv")
         }
+    }
+
+    /**
+     * Create Script.argv proxy with argument parsing.
+     * Parses command-line arguments into positional args and flags.
+     *
+     * @param args The raw arguments (can be List or Array)
+     * @return ProxyObject with get(), hasFlag(), getAll(), and raw property
+     */
+    private fun createArgvProxy(args: Any): ProxyObject {
+        // Convert args to list of strings
+        @Suppress("UNCHECKED_CAST")
+        val argsList = when (args) {
+            is List<*> -> args.map { it.toString() }
+            is Array<*> -> args.map { it.toString() }
+            else -> emptyList()
+        }
+
+        // Parse arguments into positional args and flags
+        val positionalArgs = mutableListOf<String>()
+        val flags = mutableSetOf<String>()
+
+        for (arg in argsList) {
+            when {
+                arg.startsWith("--") -> {
+                    // Long flag: --verbose -> "verbose"
+                    flags.add(arg.substring(2))
+                }
+                arg.startsWith("-") && arg.length > 1 -> {
+                    // Short flag: -v -> "v"
+                    flags.add(arg.substring(1))
+                }
+                else -> {
+                    // Positional argument
+                    positionalArgs.add(arg)
+                }
+            }
+        }
+
+        ConfigManager.debug("Parsed argv: ${positionalArgs.size} positional args, ${flags.size} flags")
+
+        // Get the GraalVM context to access undefined value
+        val context = getOrCreateContext()
+        val undefined = context.eval("js", "undefined")
+
+        return ProxyObject.fromMap(mapOf(
+            // get(index) - Get positional argument by index
+            "get" to ProxyExecutable { params ->
+                if (params.isEmpty()) {
+                    throw IllegalArgumentException("get() requires an index argument")
+                }
+                val index = when {
+                    params[0].isNumber -> params[0].asInt()
+                    else -> throw IllegalArgumentException("get() index must be a number")
+                }
+
+                if (index >= 0 && index < positionalArgs.size) {
+                    positionalArgs[index]
+                } else {
+                    undefined // Return JavaScript undefined for out of bounds
+                }
+            },
+
+            // hasFlag(flag) - Check if a flag exists
+            "hasFlag" to ProxyExecutable { params ->
+                if (params.isEmpty()) {
+                    throw IllegalArgumentException("hasFlag() requires a flag name")
+                }
+                val flag = params[0].asString()
+                flags.contains(flag)
+            },
+
+            // getAll() - Get all positional arguments as array
+            "getAll" to ProxyExecutable { _ ->
+                positionalArgs.toList()
+            },
+
+            // raw - The original args array (read-only property)
+            "raw" to argsList
+        ))
     }
 
     /**
