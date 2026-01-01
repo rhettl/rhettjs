@@ -93,6 +93,9 @@ object ScriptSystemInitializer {
 
         RhettJSCommon.LOGGER.info("[RhettJS] Reloading scripts...")
 
+        // Reset GraalVM engine (closes context, clears cached state)
+        GraalEngine.reset()
+
         // Clear server event handlers and globals (NOT startup - those don't reload)
         // TODO: Clear server events for GraalVM
         // ServerEventsAPI.clear()
@@ -121,12 +124,12 @@ object ScriptSystemInitializer {
      * @return The scripts directory path
      */
     fun getScriptsDirectory(serverDirectory: Path?): Path {
-        // During mod init, we don't have server directory yet
-        if (serverDirectory == null) {
-            return Paths.get("rjs")
+        // During mod init, we don't have server directory yet, use relative path
+        val baseScriptsDir = if (serverDirectory == null) {
+            Paths.get("rjs")
+        } else {
+            serverDirectory.resolve("rjs")
         }
-
-        val baseScriptsDir = serverDirectory.resolve("rjs")
 
         // Check if in-game testing mode is enabled
         return if (ConfigManager.isIngameTestingEnabled()) {

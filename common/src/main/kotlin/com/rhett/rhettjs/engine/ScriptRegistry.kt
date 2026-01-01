@@ -77,7 +77,7 @@ object ScriptRegistry {
 
                 ConfigManager.debug("Found script file: $name at $file")
 
-                val status = validateScript(file)
+                val status = validateScript(file, category)
 
                 scripts[name] = ScriptInfo(
                     name = name,
@@ -106,16 +106,26 @@ object ScriptRegistry {
      * Uses GraalVM's parser to check for syntax errors only.
      *
      * @param file The script file to validate
+     * @param category The script category
      * @return The status of the script (LOADED or ERROR)
      */
-    private fun validateScript(file: Path): ScriptStatus {
+    private fun validateScript(file: Path, category: ScriptCategory): ScriptStatus {
+        // Skip validation for MODULES - they're only imported, not executed directly
+        // Module syntax will be validated when imported by other scripts
+        if (category == ScriptCategory.MODULES) {
+            ConfigManager.debug("Skipping validation for module: ${file.fileName}")
+            return ScriptStatus.LOADED
+        }
+
         ConfigManager.debug("Validating syntax for: ${file.fileName}")
 
         return try {
             // Create source and let GraalVM parse it
             // This will throw PolyglotException with isSyntaxError=true for syntax errors
+            // Use ES6 module MIME type to support import/export syntax
             val source = org.graalvm.polyglot.Source.newBuilder("js", file.toFile())
                 .name(file.fileName.toString())
+                .mimeType("application/javascript+module")
                 .build()
 
             // Just building the source is not enough - we need to parse it

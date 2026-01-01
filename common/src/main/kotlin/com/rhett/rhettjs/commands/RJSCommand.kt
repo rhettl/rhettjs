@@ -166,8 +166,12 @@ object RJSCommand {
                     "Args" to argsArray
                 ))
             } catch (e: Exception) {
+                // Log full error for debugging
                 RhettJSCommon.LOGGER.error("[RhettJS] Unexpected error running script", e)
-                ScriptResult.Error(e.message ?: "Unknown error", e)
+
+                // Extract user-friendly error message
+                val userMessage = extractUserFriendlyError(e)
+                ScriptResult.Error(userMessage, e)
             }
         }.thenAccept { result ->
             // Send results back on main thread
@@ -245,6 +249,55 @@ object RJSCommand {
         source.sendSuccess({ Component.literal("§7Will be reimplemented in a future phase") }, false)
 
         return 1
+    }
+
+    /**
+     * Extract a user-friendly error message from an exception.
+     * Unwraps nested exceptions to find the root cause and formats it cleanly.
+     */
+    private fun extractUserFriendlyError(exception: Exception): String {
+        // Find the root cause by unwrapping exceptions
+        var cause: Throwable = exception
+        while (cause.cause != null && cause.cause !== cause) {
+            cause = cause.cause!!
+        }
+
+        // Handle common error types with friendly messages
+        return when {
+            // GraalVM classloader conflict
+            cause.message?.contains("already loaded in another classloader") == true -> {
+                "GraalVM context conflict. Try restarting the server or use a fresh world."
+            }
+
+            // Script syntax errors
+            cause.message?.contains("SyntaxError") == true -> {
+                // Extract just the meaningful part of syntax errors
+                cause.message?.lines()?.firstOrNull { it.contains("SyntaxError") }
+                    ?.substringAfter("SyntaxError: ")
+                    ?: "Script syntax error"
+            }
+
+            // Module not found
+            cause.message?.contains("Cannot find module") == true -> {
+                cause.message?.lines()?.firstOrNull { it.contains("Cannot find module") }
+                    ?: "Module not found"
+            }
+
+            // Script execution errors
+            exception is org.graalvm.polyglot.PolyglotException -> {
+                exception.message?.substringBefore("\n") ?: "Script execution error"
+            }
+
+            // Generic errors with clean messages
+            cause.message != null && !cause.message!!.contains("java.") -> {
+                cause.message!!
+            }
+
+            // Fallback
+            else -> {
+                "Script execution failed. Check server logs for details."
+            }
+        }
     }
 
 }

@@ -44,7 +44,6 @@ class ModuleSystemTest {
     }
 
     @Test
-    @Disabled("TODO: Built-in imports via 'import X from \"X\"' not working yet - need custom module loader")
     fun `test import built-in API modules`() {
         val script = ScriptInfo(
             name = "test-builtin-imports.js",
@@ -73,7 +72,6 @@ class ModuleSystemTest {
     }
 
     @Test
-    @Disabled("TODO: Imports resolve from actual file location, not virtual URI - update test to use '../modules/'")
     fun `test import user module from modules directory`() {
         // Create a user module
         createModule("math.js", """
@@ -88,7 +86,7 @@ class ModuleSystemTest {
         val script = ScriptInfo(
             name = "test-user-import.js",
             path = createScript("startup", """
-                import { add, PI } from './math.js';
+                import { add, PI } from '../modules/math.js';
 
                 const sum = add(5, 3);
                 console.log("5 + 3 =", sum);
@@ -112,7 +110,6 @@ class ModuleSystemTest {
     }
 
     @Test
-    @Disabled("TODO: Imports resolve from actual file location, not virtual URI - update test to use '../modules/'")
     fun `test import default export`() {
         createModule("utils.js", """
             const Utils = {
@@ -127,7 +124,7 @@ class ModuleSystemTest {
         val script = ScriptInfo(
             name = "test-default-import.js",
             path = createScript("startup", """
-                import Utils from './utils.js';
+                import Utils from '../modules/utils.js';
 
                 const greeting = Utils.greet("World");
                 console.log(greeting);
@@ -233,7 +230,6 @@ class ModuleSystemTest {
     }
 
     @Test
-    @Disabled("TODO: Imports resolve from actual file location, not virtual URI - update test to use '../modules/'")
     fun `test module with multiple exports`() {
         createModule("helpers.js", """
             export const VERSION = "1.0.0";
@@ -256,7 +252,7 @@ class ModuleSystemTest {
         val script = ScriptInfo(
             name = "test-multiple-exports.js",
             path = createScript("startup", """
-                import { VERSION, format, Helper } from './helpers.js';
+                import { VERSION, format, Helper } from '../modules/helpers.js';
 
                 console.log("VERSION:", VERSION);
                 console.log("Formatted:", format("test"));
