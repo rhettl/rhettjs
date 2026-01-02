@@ -22,14 +22,14 @@ import kotlin.io.path.exists
 object ScriptSystemInitializer {
 
     /**
-     * Initialize startup scripts during mod initialization.
-     * This runs early, before datapacks load.
+     * Initialize startup and server scripts during mod initialization.
+     * This runs early, BEFORE command registration and datapack load.
      *
      * STARTUP scripts: Early initialization (dimensions via rjs/data/ datapack JSON)
-     * SERVER scripts: Executed later via reload listener (see executeServerScripts)
+     * SERVER scripts: Event handlers, command registration (also re-executed on /reload)
      */
     fun initializeStartupScripts() {
-        RhettJSCommon.LOGGER.info("[RhettJS] Loading startup scripts (mod initialization)...")
+        RhettJSCommon.LOGGER.info("[RhettJS] Loading scripts (mod initialization)...")
 
         val scriptsDir = getScriptsDirectory(null)
         ConfigManager.debug("Script directory: $scriptsDir")
@@ -52,7 +52,11 @@ object ScriptSystemInitializer {
         // Execute startup scripts (dimensions via datapack JSON)
         executeStartupScripts()
 
-        RhettJSCommon.LOGGER.info("[RhettJS] Startup scripts initialized")
+        // Execute server scripts (initial load - before command registration)
+        // These will be re-executed during datapack reload for /reload support
+        executeServerScripts()
+
+        RhettJSCommon.LOGGER.info("[RhettJS] Scripts initialized - ready for command registration")
     }
 
     /**
@@ -233,9 +237,14 @@ object ScriptSystemInitializer {
 
     /**
      * Execute server scripts.
-     * Called by reload listener during datapack reload (initial load + /reload command).
+     * Called TWICE:
+     * 1. During mod init (before command registration) - initial command definitions
+     * 2. During datapack reload (/reload command) - update command handlers
      *
      * SERVER scripts: Event handlers (Server.on), command registration (Commands.register)
+     *
+     * Commands registered during initial execution are converted to Brigadier commands.
+     * On reload, the command executors reference the updated GraalVM context automatically.
      *
      * This is PUBLIC because it's called from platform-specific reload listeners.
      */
@@ -243,6 +252,10 @@ object ScriptSystemInitializer {
         val serverScripts = ScriptRegistry.getScripts(ScriptCategory.SERVER)
         if (serverScripts.isNotEmpty()) {
             RhettJSCommon.LOGGER.info("[RhettJS] Executing ${serverScripts.size} server scripts...")
+
+            // Clear previous command registrations before re-executing
+            GraalEngine.getCommandRegistry().clear()
+
             serverScripts.forEach { script ->
                 try {
                     GraalEngine.executeScript(script)
