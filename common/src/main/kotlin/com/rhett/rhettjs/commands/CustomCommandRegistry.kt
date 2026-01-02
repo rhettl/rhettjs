@@ -152,11 +152,18 @@ class CustomCommandRegistry {
     ): LiteralArgumentBuilder<CommandSourceStack> {
         val commandBuilder = Commands.literal(name)
 
-        // Add permission check if specified
+        // Add permission check if specified (looks up dynamically for /reload support)
         val permission = data["permission"]
         if (permission != null) {
             commandBuilder.requires { source ->
-                checkPermission(permission, source, context)
+                // Look up permission dynamically from registry (supports /reload)
+                val currentData = getCommand(name)
+                val currentPermission = currentData?.get("permission")
+                if (currentPermission != null) {
+                    checkPermission(currentPermission, source, context)
+                } else {
+                    true // No permission check
+                }
             }
         }
 
@@ -166,14 +173,16 @@ class CustomCommandRegistry {
 
         // Build command tree with arguments
         if (arguments.isEmpty()) {
-            // No arguments - just executor
-            val executor = data["executor"] as Value
+            // No arguments - executor looks up dynamically for /reload support
             commandBuilder.executes { brigadierContext ->
+                val commandData = getCommand(name)
+                val executor = commandData?.get("executor") as? Value
+                    ?: throw IllegalStateException("Command $name has no executor")
                 executeHandler(executor, brigadierContext, emptyList(), context)
             }
         } else {
-            // Has arguments - build argument chain
-            buildArgumentChain(commandBuilder, arguments, data["executor"] as Value, context)
+            // Has arguments - build argument chain (also looks up executor dynamically)
+            buildArgumentChain(commandBuilder, arguments, name, context)
         }
 
         return commandBuilder
@@ -185,7 +194,7 @@ class CustomCommandRegistry {
     private fun buildArgumentChain(
         baseBuilder: LiteralArgumentBuilder<CommandSourceStack>,
         arguments: List<Map<String, String>>,
-        executor: Value,
+        commandName: String,
         context: Context
     ) {
         // Build from the last argument backwards
@@ -193,6 +202,10 @@ class CustomCommandRegistry {
             arguments.last()["name"]!!,
             mapArgumentType(arguments.last()["type"]!!)
         ).executes { brigadierContext ->
+            // Look up executor dynamically from registry (supports /reload)
+            val commandData = getCommand(commandName)
+            val executor = commandData?.get("executor") as? Value
+                ?: throw IllegalStateException("Command $commandName has no executor")
             executeHandler(executor, brigadierContext, arguments, context)
         }
 
