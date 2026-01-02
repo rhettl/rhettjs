@@ -5,16 +5,22 @@ import com.rhett.rhettjs.config.ConfigManager
 import com.rhett.rhettjs.engine.ScriptSystemInitializer
 import com.rhett.rhettjs.engine.GraalEngine
 import com.rhett.rhettjs.threading.TickScheduler
+import net.minecraft.server.packs.resources.PreparableReloadListener
+import net.minecraft.server.packs.resources.ResourceManager
+import net.minecraft.util.profiling.ProfilerFiller
 import net.neoforged.bus.api.IEventBus
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.loading.FMLPaths
 import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.event.AddReloadListenerEvent
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.server.ServerStartedEvent
 import net.neoforged.neoforge.event.server.ServerStartingEvent
 import net.neoforged.neoforge.event.server.ServerStoppingEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executor
 
 /**
  * NeoForge entrypoint for RhettJS mod.
@@ -32,12 +38,16 @@ class RhettJS(modEventBus: IEventBus) {
         if (ConfigManager.isEnabled()) {
             ConfigManager.debug("RhettJS initialization starting")
 
-            // Load globals and startup scripts early (dimensions, registries)
+            // Load startup scripts early (dimensions via rjs/data/ datapack)
             ScriptSystemInitializer.initializeStartupScripts()
 
             // Register block event handlers
             NeoForge.EVENT_BUS.register(com.rhett.rhettjs.events.NeoForgeBlockEventHandler)
             ConfigManager.debug("Registered block event handlers")
+
+            // Register reload listener handler for SERVER scripts
+            NeoForge.EVENT_BUS.register(ReloadListenerHandler)
+            ConfigManager.debug("Registered reload listener handler")
 
             // Register tick handler for schedule() processing
             NeoForge.EVENT_BUS.register(TickHandler)
@@ -64,6 +74,32 @@ class RhettJS(modEventBus: IEventBus) {
         @SubscribeEvent
         fun onServerTickPost(event: ServerTickEvent.Post) {
             TickScheduler.tick()
+        }
+    }
+
+    /**
+     * Handles datapack reload for SERVER scripts.
+     */
+    object ReloadListenerHandler {
+        @SubscribeEvent
+        fun onAddReloadListeners(event: AddReloadListenerEvent) {
+            event.addListener(object : PreparableReloadListener {
+                override fun reload(
+                    preparationBarrier: PreparableReloadListener.PreparationBarrier,
+                    resourceManager: ResourceManager,
+                    preparationsProfiler: ProfilerFiller,
+                    reloadProfiler: ProfilerFiller,
+                    backgroundExecutor: Executor,
+                    gameExecutor: Executor
+                ): CompletableFuture<Void> {
+                    // Execute SERVER scripts on the game thread
+                    return preparationBarrier.wait(Unit).thenRunAsync({
+                        RhettJSCommon.LOGGER.info("[RhettJS] Reloading server scripts (datapack reload)...")
+                        ScriptSystemInitializer.executeServerScripts()
+                    }, gameExecutor)
+                }
+            })
+            ConfigManager.debug("Added reload listener for server scripts")
         }
     }
 

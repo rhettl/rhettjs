@@ -22,14 +22,14 @@ import kotlin.io.path.exists
 object ScriptSystemInitializer {
 
     /**
-     * Initialize startup and server scripts during mod initialization.
-     * This runs BEFORE command registration event, so commands can be registered.
+     * Initialize startup scripts during mod initialization.
+     * This runs early, before datapacks load.
      *
-     * STARTUP scripts: Early initialization (dimensions via datapack JSON)
-     * SERVER scripts: Event handlers, command registration
+     * STARTUP scripts: Early initialization (dimensions via rjs/data/ datapack JSON)
+     * SERVER scripts: Executed later via reload listener (see executeServerScripts)
      */
     fun initializeStartupScripts() {
-        RhettJSCommon.LOGGER.info("[RhettJS] Loading scripts (mod initialization)...")
+        RhettJSCommon.LOGGER.info("[RhettJS] Loading startup scripts (mod initialization)...")
 
         val scriptsDir = getScriptsDirectory(null)
         ConfigManager.debug("Script directory: $scriptsDir")
@@ -52,11 +52,7 @@ object ScriptSystemInitializer {
         // Execute startup scripts (dimensions via datapack JSON)
         executeStartupScripts()
 
-        // Execute server scripts (event handlers, commands)
-        // These MUST run before command registration event
-        executeServerScripts()
-
-        RhettJSCommon.LOGGER.info("[RhettJS] Scripts initialized - ready for command registration")
+        RhettJSCommon.LOGGER.info("[RhettJS] Startup scripts initialized")
     }
 
     /**
@@ -237,9 +233,13 @@ object ScriptSystemInitializer {
 
     /**
      * Execute server scripts.
-     * These run when the server starts, after APIs are initialized.
+     * Called by reload listener during datapack reload (initial load + /reload command).
+     *
+     * SERVER scripts: Event handlers (Server.on), command registration (Commands.register)
+     *
+     * This is PUBLIC because it's called from platform-specific reload listeners.
      */
-    private fun executeServerScripts() {
+    fun executeServerScripts() {
         val serverScripts = ScriptRegistry.getScripts(ScriptCategory.SERVER)
         if (serverScripts.isNotEmpty()) {
             RhettJSCommon.LOGGER.info("[RhettJS] Executing ${serverScripts.size} server scripts...")

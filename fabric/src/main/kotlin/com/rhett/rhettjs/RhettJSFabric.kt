@@ -9,7 +9,12 @@ import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener
 import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.packs.PackType
+import net.minecraft.server.packs.resources.ResourceManager
 
 /**
  * Fabric entrypoint for RhettJS mod.
@@ -30,8 +35,21 @@ class RhettJSFabric : ModInitializer {
 
         ConfigManager.debug("RhettJS initialization starting")
 
-        // Load globals and startup scripts early (dimensions, registries)
+        // Load startup scripts early (dimensions via rjs/data/ datapack)
         ScriptSystemInitializer.initializeStartupScripts()
+
+        // Register reload listener for SERVER scripts (executes on initial load + /reload)
+        ResourceManagerHelper.get(PackType.SERVER_DATA).registerReloadListener(object : SimpleSynchronousResourceReloadListener {
+            override fun onResourceManagerReload(manager: ResourceManager) {
+                RhettJSCommon.LOGGER.info("[RhettJS] Reloading server scripts (datapack reload)...")
+                ScriptSystemInitializer.executeServerScripts()
+            }
+
+            override fun getFabricId(): ResourceLocation {
+                return ResourceLocation.fromNamespaceAndPath(RhettJSCommon.MOD_ID, "server_scripts")
+            }
+        })
+        ConfigManager.debug("Registered reload listener for server scripts")
 
         // Register block event handlers
         com.rhett.rhettjs.events.FabricBlockEventHandler.register()
