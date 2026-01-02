@@ -22,11 +22,14 @@ import kotlin.io.path.exists
 object ScriptSystemInitializer {
 
     /**
-     * Initialize startup scripts and globals during mod initialization.
-     * This runs BEFORE datapacks load so dimensions are ready.
+     * Initialize startup and server scripts during mod initialization.
+     * This runs BEFORE command registration event, so commands can be registered.
+     *
+     * STARTUP scripts: Early initialization (dimensions via datapack JSON)
+     * SERVER scripts: Event handlers, command registration
      */
     fun initializeStartupScripts() {
-        RhettJSCommon.LOGGER.info("[RhettJS] Loading startup scripts (mod initialization)...")
+        RhettJSCommon.LOGGER.info("[RhettJS] Loading scripts (mod initialization)...")
 
         val scriptsDir = getScriptsDirectory(null)
         ConfigManager.debug("Script directory: $scriptsDir")
@@ -46,16 +49,19 @@ object ScriptSystemInitializer {
         // GlobalsLoader.reload(scriptsDir)
         ConfigManager.debug("Loaded global libraries")
 
-        // Execute startup scripts (direct registries like items/blocks)
-        // Note: Dimensions use datapack JSON files, not script registration
+        // Execute startup scripts (dimensions via datapack JSON)
         executeStartupScripts()
 
-        RhettJSCommon.LOGGER.info("[RhettJS] Startup scripts initialized")
+        // Execute server scripts (event handlers, commands)
+        // These MUST run before command registration event
+        executeServerScripts()
+
+        RhettJSCommon.LOGGER.info("[RhettJS] Scripts initialized - ready for command registration")
     }
 
     /**
      * Initialize server resources on server start.
-     * Executes SERVER scripts and then registers custom commands.
+     * SERVER scripts have already executed during mod init.
      *
      * @param server The Minecraft server instance
      */
@@ -68,13 +74,6 @@ object ScriptSystemInitializer {
 
         // Initialize World API (needs server instance)
         initializeWorldAPI(server)
-
-        // Execute SERVER scripts (event handlers, command registration)
-        executeServerScripts()
-
-        // Register custom commands with Brigadier (server scripts have now registered commands)
-        ConfigManager.debug("Registering custom commands with Brigadier...")
-        GraalEngine.getCommandRegistry().registerAll()
 
         RhettJSCommon.LOGGER.info("[RhettJS] Ready! Use /rjs list to see available scripts")
         ConfigManager.debug("Server resources initialization complete")
