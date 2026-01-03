@@ -122,10 +122,10 @@ object PlayerAdapter {
                     player.inventory.add(stack)
                 }
                 null
-            },
+            }
 
-            // Escape hatch - raw Minecraft player
-            "minecraft" to context.asValue(player)
+            // NOTE: Removed "minecraft" escape hatch - causes stack overflow due to circular references
+            // If needed, expose specific MC methods via additional proxy methods instead
         ))
 
         return context.asValue(playerProxy)
