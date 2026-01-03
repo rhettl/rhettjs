@@ -56,7 +56,7 @@ object ScriptSystemInitializer {
 
         // Execute server scripts (initial load - before command registration)
         // These will be re-executed during datapack reload for /reload support
-        executeServerScripts()
+        executeServerScripts(fromModInit = true)
 
         RhettJSCommon.LOGGER.info("[RhettJS] Scripts initialized - ready for command registration")
     }
@@ -239,9 +239,10 @@ object ScriptSystemInitializer {
 
     /**
      * Execute server scripts.
-     * Called TWICE:
+     * Called multiple times:
      * 1. During mod init (before command registration) - initial command definitions
-     * 2. During datapack reload (/reload command) - update command handlers
+     * 2. During initial datapack reload - skip (commands already stored)
+     * 3. During /reload - clear and re-execute for updates
      *
      * SERVER scripts: Event handlers (Server.on), command registration (Commands.register)
      *
@@ -249,29 +250,37 @@ object ScriptSystemInitializer {
      * On reload, the command executors reference the updated GraalVM context automatically.
      *
      * This is PUBLIC because it's called from platform-specific reload listeners.
+     *
+     * @param fromModInit Set to true when called from mod initialization
      */
-    fun executeServerScripts() {
+    fun executeServerScripts(fromModInit: Boolean = false) {
         val serverScripts = ScriptRegistry.getScripts(ScriptCategory.SERVER)
-        if (serverScripts.isNotEmpty()) {
-            // On initial datapack load, DON'T clear (commands already registered with Brigadier)
-            // On subsequent reloads, DO clear (update command definitions)
-            if (initialDatapackLoadComplete) {
-                RhettJSCommon.LOGGER.info("[RhettJS] Reloading ${serverScripts.size} server scripts...")
-                GraalEngine.getCommandRegistry().clear()
-            } else {
-                RhettJSCommon.LOGGER.info("[RhettJS] Initial datapack load - server scripts already executed during mod init")
-                initialDatapackLoadComplete = true
-                // Don't execute scripts again - they already ran during mod init
-                return
-            }
+        if (serverScripts.isEmpty()) {
+            ConfigManager.debug("No server scripts to execute")
+            return
+        }
 
-            serverScripts.forEach { script ->
-                try {
-                    GraalEngine.executeScript(script)
-                    ConfigManager.debug("Executed server script: ${script.name}")
-                } catch (e: Exception) {
-                    RhettJSCommon.LOGGER.error("[RhettJS] Failed to execute server script: ${script.name}", e)
-                }
+        // Logic for different execution contexts:
+        if (fromModInit) {
+            // First execution during mod init - execute normally
+            RhettJSCommon.LOGGER.info("[RhettJS] Executing ${serverScripts.size} server scripts (mod init)...")
+        } else if (!initialDatapackLoadComplete) {
+            // First datapack reload - skip (scripts already executed during mod init)
+            RhettJSCommon.LOGGER.info("[RhettJS] Initial datapack load - skipping (scripts executed during mod init)")
+            initialDatapackLoadComplete = true
+            return
+        } else {
+            // Subsequent reloads (/reload command) - clear and re-execute
+            RhettJSCommon.LOGGER.info("[RhettJS] Reloading ${serverScripts.size} server scripts...")
+            GraalEngine.getCommandRegistry().clear()
+        }
+
+        serverScripts.forEach { script ->
+            try {
+                GraalEngine.executeScript(script)
+                ConfigManager.debug("Executed server script: ${script.name}")
+            } catch (e: Exception) {
+                RhettJSCommon.LOGGER.error("[RhettJS] Failed to execute server script: ${script.name}", e)
             }
         }
 
