@@ -270,9 +270,18 @@ object ScriptSystemInitializer {
             initialDatapackLoadComplete = true
             return
         } else {
-            // Subsequent reloads (/reload command) - clear and re-execute
+            // Subsequent reloads (/reload command) - reset context and re-execute
             RhettJSCommon.LOGGER.info("[RhettJS] Reloading ${serverScripts.size} server scripts...")
             GraalEngine.getCommandRegistry().clear()
+
+            // Reset GraalVM context to force module re-initialization
+            // ES6 modules are cached within the context, so we need a fresh context
+            GraalEngine.reset()
+            ConfigManager.debug("GraalVM context reset for script reload")
+
+            // Need to re-store dispatcher with new context
+            // The old context was just closed, so CommandRegistry needs updated context reference
+            // This will be done when scripts execute and commands are registered
         }
 
         serverScripts.forEach { script ->

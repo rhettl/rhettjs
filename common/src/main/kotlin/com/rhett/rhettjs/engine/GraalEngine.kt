@@ -1272,6 +1272,20 @@ object GraalEngine {
 
                     commandData["executor"] = handler
                     commandRegistry.storeCommand(name, commandData)  // Persist changes - THIS IS CRITICAL!
+
+                    // Update registry's context reference to current context
+                    // This is needed after GraalEngine.reset() which invalidates the old context
+                    val currentContext = getOrCreateContext()
+                    if (commandRegistry.context == null) {
+                        ConfigManager.debug("[Commands] Updating registry context reference after reset")
+                        // Re-store dispatcher with new context
+                        val dispatcher = commandRegistry.dispatcher
+                        val buildContext = commandRegistry.commandBuildContext
+                        if (dispatcher != null && buildContext != null) {
+                            commandRegistry.storeDispatcher(dispatcher, currentContext, buildContext)
+                        }
+                    }
+
                     ConfigManager.debug("Registered command: $name with ${(commandData["arguments"] as List<*>).size} arguments")
 
                     // Return self for chaining (though typically executes() is the last call)

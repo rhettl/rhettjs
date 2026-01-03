@@ -36,9 +36,9 @@ import org.graalvm.polyglot.proxy.ProxyObject
 class CustomCommandRegistry {
 
     private val commands = mutableMapOf<String, MutableMap<String, Any?>>()
-    private var dispatcher: CommandDispatcher<CommandSourceStack>? = null
-    private var context: Context? = null
-    private var commandBuildContext: net.minecraft.commands.CommandBuildContext? = null
+    internal var dispatcher: CommandDispatcher<CommandSourceStack>? = null
+    internal var context: Context? = null
+    internal var commandBuildContext: net.minecraft.commands.CommandBuildContext? = null
 
     /**
      * Store a command from JavaScript.
@@ -49,6 +49,11 @@ class CustomCommandRegistry {
     fun storeCommand(name: String, data: Map<String, Any?>) {
         commands[name] = data.toMutableMap()
         ConfigManager.debug("[Commands] Stored command: /$name (executor=${data["executor"] != null}, args=${(data["arguments"] as? List<*>)?.size ?: 0}, permission=${data["permission"] != null})")
+
+        // Update context reference if it's null (happens after GraalEngine.reset())
+        if (context == null && dispatcher != null) {
+            ConfigManager.debug("[Commands] Context was null, will need re-storing before execution")
+        }
     }
 
     /**
