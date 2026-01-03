@@ -1216,6 +1216,7 @@ object GraalEngine {
                         throw IllegalArgumentException("description() requires a description string")
                     }
                     commandData["description"] = args[0].asString()
+                    commandRegistry.storeCommand(name, commandData)  // Persist changes
                     // Return self for chaining
                     createCommandBuilder(name)
                 },
@@ -1226,6 +1227,7 @@ object GraalEngine {
                     }
                     // Store the permission (string or function)
                     commandData["permission"] = args[0]
+                    commandRegistry.storeCommand(name, commandData)  // Persist changes
                     // Return self for chaining
                     createCommandBuilder(name)
                 },
@@ -1246,6 +1248,7 @@ object GraalEngine {
                     @Suppress("UNCHECKED_CAST")
                     val arguments = commandData["arguments"] as MutableList<Map<String, String>>
                     arguments.add(mapOf("name" to argName, "type" to argType))
+                    commandRegistry.storeCommand(name, commandData)  // Persist changes
 
                     // Return self for chaining
                     createCommandBuilder(name)
@@ -1262,6 +1265,7 @@ object GraalEngine {
                     }
 
                     commandData["executor"] = handler
+                    commandRegistry.storeCommand(name, commandData)  // Persist changes - THIS IS CRITICAL!
                     ConfigManager.debug("Registered command: $name with ${(commandData["arguments"] as List<*>).size} arguments")
 
                     // Return self for chaining (though typically executes() is the last call)
