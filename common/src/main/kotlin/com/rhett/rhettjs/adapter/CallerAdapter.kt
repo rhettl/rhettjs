@@ -67,10 +67,9 @@ object CallerAdapter {
                 val message = args[0].asString()
                 source.sendSuccess({ Component.literal(message) }, false)
                 null
-            },
+            }
 
-            // Escape hatch - raw CommandSourceStack
-            "source" to context.asValue(source)
+            // NOTE: Removed "source" escape hatch - causes stack overflow due to circular references
         ))
     }
 }

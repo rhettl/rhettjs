@@ -312,13 +312,14 @@ class CustomCommandRegistry {
 
             // Create caller object
             val caller = CallerAdapter.toJS(brigadierContext.source, graalContext)
+            ConfigManager.debug("[Commands] Created caller object: ${if (caller.isNull) "NULL" else "OK"}")
 
             // Create event object
             val event = ProxyObject.fromMap(mapOf(
                 "caller" to caller,
                 "args" to argsObject,
-                "command" to brigadierContext.input.substringAfter("/").substringBefore(" "),
-                "source" to graalContext.asValue(brigadierContext.source)
+                "command" to brigadierContext.input.substringAfter("/").substringBefore(" ")
+                // NOTE: Removed "source" - causes stack overflow
             ))
 
             // Execute handler
