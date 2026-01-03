@@ -295,11 +295,13 @@ object GraalEngine {
                     .name(script.name)
                     .uri(virtualUri)  // Virtual path (doesn't work for imports yet)
                     .mimeType("application/javascript+module")  // Enable ES6 module parsing
+                    .cached(false)  // Disable caching so scripts can be reloaded
                     .build()
             } else {
                 Source.newBuilder("js", script.path.toFile())
                     .name(script.name)
                     .mimeType("application/javascript+module")  // Enable ES6 module parsing
+                    .cached(false)  // Disable caching so scripts can be reloaded
                     .build()
             }
 

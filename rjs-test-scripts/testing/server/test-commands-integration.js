@@ -70,6 +70,10 @@ try {
         .executes(({ caller, args }) => {
             console.log('✓ testheal executed');
             console.log('  Target:', args.target);
+            if (!args.target) {
+              caller.sendMessage('No player found.');
+              return 0;
+            }
             console.log('  Target name:', args.target.name);
             console.log('  Target health:', args.target.health);
             console.log('  Target maxHealth:', args.target.maxHealth);

@@ -354,19 +354,28 @@ class CustomCommandRegistry {
     ): Value {
         val argsMap = mutableMapOf<String, Any?>()
 
+        // Debug: Log all arguments in the context
+        ConfigManager.debug("[Commands] Brigadier context input: ${brigadierContext.input}")
+        ConfigManager.debug("[Commands] Brigadier context nodes: ${brigadierContext.nodes.map { it.node.name }}")
+
         arguments.forEach { argDef ->
             val name = argDef["name"]!!
             val type = argDef["type"]!!
 
             try {
+                ConfigManager.debug("[Commands] Extracting argument: $name (type=$type)")
                 val value: Any? = when (type) {
                     "string" -> StringArgumentType.getString(brigadierContext, name)
                     "int" -> IntegerArgumentType.getInteger(brigadierContext, name)
                     "float" -> FloatArgumentType.getFloat(brigadierContext, name)
                     "player" -> {
                         // Extract player and wrap it
+                        ConfigManager.debug("[Commands] Extracting player argument: $name")
                         val player = EntityArgument.getPlayer(brigadierContext, name)
-                        PlayerAdapter.toJS(player, graalContext)
+                        ConfigManager.debug("[Commands] Got player: ${player.name.string}")
+                        val wrappedPlayer = PlayerAdapter.toJS(player, graalContext)
+                        ConfigManager.debug("[Commands] Wrapped player into JS object")
+                        wrappedPlayer
                     }
                     "item" -> {
                         // For now, return item ID as string
@@ -388,11 +397,17 @@ class CustomCommandRegistry {
 
                 if (value != null) {
                     argsMap[name] = value
+                    ConfigManager.debug("[Commands] Added argument $name to args object")
+                } else {
+                    ConfigManager.debug("[Commands] Argument $name was null, skipping")
                 }
             } catch (e: Exception) {
-                ConfigManager.debug("Failed to extract argument '$name': ${e.message}")
+                ConfigManager.debug("[Commands] ✗ Failed to extract argument '$name': ${e.message}")
+                e.printStackTrace()
             }
         }
+
+        ConfigManager.debug("[Commands] Final args map keys: ${argsMap.keys}")
 
         return graalContext.asValue(ProxyObject.fromMap(argsMap))
     }
