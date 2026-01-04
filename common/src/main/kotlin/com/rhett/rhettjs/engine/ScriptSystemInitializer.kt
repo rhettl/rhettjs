@@ -33,10 +33,12 @@ object ScriptSystemInitializer {
     fun initializeStartupScripts() {
         RhettJSCommon.LOGGER.info("[RhettJS] Loading scripts (mod initialization)...")
 
+        // Get scripts directory (rjs/ or rjs/testing/ depending on config)
         val scriptsDir = getScriptsDirectory(null)
         ConfigManager.debug("Script directory: $scriptsDir")
 
-        // Initialize filesystem structure (creates directories + extracts type definitions)
+        // Initialize filesystem structure at the scripts directory
+        // This creates: __types, modules, scripts, startup, server, data, assets, client
         com.rhett.rhettjs.config.FilesystemInitializer.initialize(scriptsDir)
 
         // Set scripts directory for module resolution
