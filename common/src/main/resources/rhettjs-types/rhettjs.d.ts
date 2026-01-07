@@ -134,6 +134,10 @@ declare module 'World' {
     export { default } from './world';
 }
 
+declare module 'Structure' {
+    export { default } from './structure';
+}
+
 declare module 'StructureNbt' {
     export { StructureNbt } from './structure';
 }

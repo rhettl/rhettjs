@@ -26,7 +26,7 @@ class ConfigManagerTest {
 
     @Test
     fun `test default config creation`() {
-        val configFile = tempDir.resolve("rhettjs.json")
+        val configFile = tempDir.resolve("rhettjs.json5")
 
         // Config file should be created
         assertTrue(Files.exists(configFile), "Config file should be created")
@@ -39,7 +39,7 @@ class ConfigManagerTest {
 
     @Test
     fun `test config file format`() {
-        val configFile = tempDir.resolve("rhettjs.json")
+        val configFile = tempDir.resolve("rhettjs.json5")
         val content = configFile.readText()
 
         // Should be valid JSON with expected fields
@@ -49,13 +49,14 @@ class ConfigManagerTest {
 
     @Test
     fun `test load existing config`() {
-        val configFile = tempDir.resolve("rhettjs.json")
+        val configFile = tempDir.resolve("rhettjs.json5")
 
         // Write a custom config
         configFile.writeText("""
             {
               "enabled": false,
-              "debug_logging": false
+              "debug_logging": false,
+              "debug_run_ingame_testing": false
             }
         """.trimIndent())
 
@@ -69,7 +70,7 @@ class ConfigManagerTest {
 
     @Test
     fun `test save config`() {
-        val configFile = tempDir.resolve("rhettjs.json")
+        val configFile = tempDir.resolve("rhettjs.json5")
 
         // Save should work without errors
         assertDoesNotThrow {
@@ -85,8 +86,8 @@ class ConfigManagerTest {
         assertTrue(ConfigManager.isEnabled(), "Should be enabled by default")
 
         // Manually set to false and reload
-        val configFile = tempDir.resolve("rhettjs.json")
-        configFile.writeText("""{"enabled": false, "debug_logging": true}""")
+        val configFile = tempDir.resolve("rhettjs.json5")
+        configFile.writeText("""{"enabled": false, "debug_logging": true, "debug_run_ingame_testing": false}""")
         ConfigManager.load()
 
         assertFalse(ConfigManager.isEnabled(), "Should return false when disabled")
@@ -97,8 +98,8 @@ class ConfigManagerTest {
         assertTrue(ConfigManager.isDebugEnabled(), "Debug should be enabled by default")
 
         // Manually set to false and reload
-        val configFile = tempDir.resolve("rhettjs.json")
-        configFile.writeText("""{"enabled": true, "debug_logging": false}""")
+        val configFile = tempDir.resolve("rhettjs.json5")
+        configFile.writeText("""{"enabled": true, "debug_logging": false, "debug_run_ingame_testing": false}""")
         ConfigManager.load()
 
         assertFalse(ConfigManager.isDebugEnabled(), "Should return false when debug disabled")
@@ -131,8 +132,8 @@ class ConfigManagerTest {
         assertTrue(evaluated, "Should evaluate lambda when debug enabled")
 
         // Disable debug
-        val configFile = tempDir.resolve("rhettjs.json")
-        configFile.writeText("""{"enabled": true, "debug_logging": false}""")
+        val configFile = tempDir.resolve("rhettjs.json5")
+        configFile.writeText("""{"enabled": true, "debug_logging": false, "debug_run_ingame_testing": false}""")
         ConfigManager.load()
 
         evaluated = false
@@ -146,7 +147,7 @@ class ConfigManagerTest {
 
     @Test
     fun `test malformed config uses defaults`() {
-        val configFile = tempDir.resolve("rhettjs.json")
+        val configFile = tempDir.resolve("rhettjs.json5")
         configFile.writeText("{ invalid json }")
 
         // Should not crash, should use defaults
@@ -168,6 +169,6 @@ class ConfigManagerTest {
         }
 
         assertTrue(Files.exists(nestedDir), "Nested directory should be created")
-        assertTrue(Files.exists(nestedDir.resolve("rhettjs.json")), "Config file should be created in nested dir")
+        assertTrue(Files.exists(nestedDir.resolve("rhettjs.json5")), "Config file should be created in nested dir")
     }
 }

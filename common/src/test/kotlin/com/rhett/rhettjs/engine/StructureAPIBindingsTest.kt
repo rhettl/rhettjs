@@ -240,12 +240,12 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-large-structure-methods.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
-                const methods = ['captureLarge', 'placeLarge', 'getSize', 'listLarge', 'removeLarge'];
+                const methods = ['capture', 'place', 'getSize', 'list', 'remove'];
                 for (const method of methods) {
-                    if (typeof Structure[method] !== 'function') {
-                        throw new Error('Structure.' + method + ' should be a function');
+                    if (typeof LargeStructureNbt[method] !== 'function') {
+                        throw new Error('LargeStructureNbt.' + method + ' should be a function');
                     }
                 }
 
@@ -257,7 +257,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure API should have large structure methods")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt API should have large structure methods")
     }
 
     @Test
@@ -265,17 +265,17 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-captureLarge-promise.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
                 const pos1 = { x: 0, y: 64, z: 0 };
                 const pos2 = { x: 100, y: 100, z: 100 };
-                const promise = Structure.captureLarge(pos1, pos2, 'test:large');
+                const promise = LargeStructureNbt.capture(pos1, pos2, 'test:large');
 
                 if (!(promise instanceof Promise)) {
-                    throw new Error('Structure.captureLarge should return a Promise');
+                    throw new Error('LargeStructureNbt.capture should return a Promise');
                 }
 
-                console.log('Structure.captureLarge returns Promise');
+                console.log('LargeStructureNbt.capture returns Promise');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -283,7 +283,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.captureLarge should return Promise")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.capture should return Promise")
     }
 
     @Test
@@ -291,16 +291,16 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-placeLarge-promise.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
                 const pos = { x: 0, y: 64, z: 0 };
-                const promise = Structure.placeLarge(pos, 'test:large');
+                const promise = LargeStructureNbt.place(pos, 'test:large');
 
                 if (!(promise instanceof Promise)) {
-                    throw new Error('Structure.placeLarge should return a Promise');
+                    throw new Error('LargeStructureNbt.place should return a Promise');
                 }
 
-                console.log('Structure.placeLarge returns Promise');
+                console.log('LargeStructureNbt.place returns Promise');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -308,7 +308,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.placeLarge should return Promise")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.place should return Promise")
     }
 
     @Test
@@ -340,19 +340,19 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-listLarge-promise.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
-                const promise1 = Structure.listLarge();
-                const promise2 = Structure.listLarge('test');
+                const promise1 = LargeStructureNbt.list();
+                const promise2 = LargeStructureNbt.list('test');
 
                 if (!(promise1 instanceof Promise)) {
-                    throw new Error('Structure.listLarge() should return a Promise');
+                    throw new Error('LargeStructureNbt.list() should return a Promise');
                 }
                 if (!(promise2 instanceof Promise)) {
-                    throw new Error('Structure.listLarge(namespace) should return a Promise');
+                    throw new Error('LargeStructureNbt.list(namespace) should return a Promise');
                 }
 
-                console.log('Structure.listLarge returns Promise');
+                console.log('LargeStructureNbt.list returns Promise');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -360,7 +360,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.listLarge should return Promise")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.list should return Promise")
     }
 
     @Test
@@ -368,15 +368,15 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-removeLarge-promise.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
-                const promise = Structure.removeLarge('test:large');
+                const promise = LargeStructureNbt.remove('test:large');
 
                 if (!(promise instanceof Promise)) {
-                    throw new Error('Structure.removeLarge should return a Promise');
+                    throw new Error('LargeStructureNbt.remove should return a Promise');
                 }
 
-                console.log('Structure.removeLarge returns Promise');
+                console.log('LargeStructureNbt.remove returns Promise');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -384,7 +384,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.removeLarge should return Promise")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.remove should return Promise")
     }
 
     @Test
@@ -392,24 +392,24 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-captureLarge-pieceSize.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
                 const pos1 = { x: 0, y: 64, z: 0 };
                 const pos2 = { x: 100, y: 100, z: 100 };
 
                 // Default piece size
-                const promise1 = Structure.captureLarge(pos1, pos2, 'test:large1');
+                const promise1 = LargeStructureNbt.capture(pos1, pos2, 'test:large1');
 
                 // Custom piece size
-                const promise2 = Structure.captureLarge(pos1, pos2, 'test:large2', {
+                const promise2 = LargeStructureNbt.capture(pos1, pos2, 'test:large2', {
                     pieceSize: { x: 30, y: 30, z: 30 }
                 });
 
                 if (!(promise1 instanceof Promise) || !(promise2 instanceof Promise)) {
-                    throw new Error('Structure.captureLarge should return Promise with/without pieceSize');
+                    throw new Error('LargeStructureNbt.capture should return Promise with/without pieceSize');
                 }
 
-                console.log('Structure.captureLarge accepts optional pieceSize');
+                console.log('LargeStructureNbt.capture accepts optional pieceSize');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -417,7 +417,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.captureLarge should accept optional pieceSize parameter")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.capture should accept optional pieceSize parameter")
     }
 
     @Test
@@ -425,21 +425,21 @@ class StructureAPIBindingsTest {
         val script = ScriptInfo(
             name = "test-placeLarge-options.js",
             path = createTempScript("""
-                import Structure from 'Structure';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
                 const pos = { x: 0, y: 64, z: 0 };
 
-                const promise1 = Structure.placeLarge(pos, 'test:large');
-                const promise2 = Structure.placeLarge(pos, 'test:large', { rotation: 90 });
-                const promise3 = Structure.placeLarge(pos, 'test:large', { centered: true });
-                const promise4 = Structure.placeLarge(pos, 'test:large', { rotation: 180, centered: true });
+                const promise1 = LargeStructureNbt.place(pos, 'test:large');
+                const promise2 = LargeStructureNbt.place(pos, 'test:large', { rotation: 90 });
+                const promise3 = LargeStructureNbt.place(pos, 'test:large', { centered: true });
+                const promise4 = LargeStructureNbt.place(pos, 'test:large', { rotation: 180, centered: true });
 
                 if (!(promise1 instanceof Promise) || !(promise2 instanceof Promise) ||
                     !(promise3 instanceof Promise) || !(promise4 instanceof Promise)) {
-                    throw new Error('Structure.placeLarge should return Promise with all options');
+                    throw new Error('LargeStructureNbt.place should return Promise with all options');
                 }
 
-                console.log('Structure.placeLarge accepts rotation and centered options');
+                console.log('LargeStructureNbt.place accepts rotation and centered options');
             """),
             category = ScriptCategory.STARTUP,
             lastModified = System.currentTimeMillis(),
@@ -447,7 +447,7 @@ class StructureAPIBindingsTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Structure.placeLarge should accept rotation and centered parameters")
+        assertTrue(result is ScriptResult.Success, "LargeStructureNbt.place should accept rotation and centered parameters")
     }
 
     private fun createTempScript(content: String): Path {

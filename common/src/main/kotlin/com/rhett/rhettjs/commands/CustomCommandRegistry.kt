@@ -134,6 +134,9 @@ class CustomCommandRegistry {
                 disp.register(command)
                 ConfigManager.debug("[Commands] ✓ Successfully registered: /$name")
                 successCount++
+            } catch (e: IllegalArgumentException) {
+                // Validation errors should propagate
+                throw e
             } catch (e: Exception) {
                 ConfigManager.debug("[Commands] ✗ Failed to register /$name: ${e.message}")
                 e.printStackTrace()
@@ -189,11 +192,22 @@ class CustomCommandRegistry {
         val arguments = data["arguments"] as? List<*> ?: emptyList<Any>()
         val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity")
 
+        // Check for required arguments after optional ones
+        var foundOptional = false
         arguments.forEach { arg ->
             if (arg is Map<*, *>) {
                 val type = arg["type"] as? String
                 if (type != null && type !in validTypes) {
                     throw IllegalArgumentException("Invalid argument type: $type. Valid types: ${validTypes.joinToString(", ")}")
+                }
+
+                val isOptional = arg["optional"] as? Boolean ?: false
+                if (foundOptional && !isOptional) {
+                    val argName = arg["name"] as? String ?: "unknown"
+                    throw IllegalArgumentException("Required argument '$argName' cannot come after optional arguments")
+                }
+                if (isOptional) {
+                    foundOptional = true
                 }
             }
         }
@@ -202,10 +216,20 @@ class CustomCommandRegistry {
         subcommands.forEach { (subcommandName, subcommandData) ->
             @Suppress("UNCHECKED_CAST")
             val subArguments = subcommandData["arguments"] as? List<Map<String, Any?>> ?: emptyList()
+            var foundOptional = false
             subArguments.forEach { arg ->
                 val type = arg["type"] as? String
                 if (type != null && type !in validTypes) {
                     throw IllegalArgumentException("Subcommand '$subcommandName' has invalid argument type: $type. Valid types: ${validTypes.joinToString(", ")}")
+                }
+
+                val isOptional = arg["optional"] as? Boolean ?: false
+                if (foundOptional && !isOptional) {
+                    val argName = arg["name"] as? String ?: "unknown"
+                    throw IllegalArgumentException("Subcommand '$subcommandName': Required argument '$argName' cannot come after optional arguments")
+                }
+                if (isOptional) {
+                    foundOptional = true
                 }
             }
         }

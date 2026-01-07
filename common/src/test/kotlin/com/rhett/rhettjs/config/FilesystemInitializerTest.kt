@@ -64,7 +64,7 @@ class FilesystemInitializerTest {
         assertTrue(rhettjsContent.isNotEmpty(), "rhettjs.d.ts should have content")
 
         // Verify it contains expected declarations
-        assertTrue(rhettjsContent.contains("declare namespace"), "rhettjs.d.ts should contain namespace declarations")
+        assertTrue(rhettjsContent.contains("declare module"), "rhettjs.d.ts should contain module declarations")
         assertTrue(rhettjsContent.contains("Structure"), "rhettjs.d.ts should contain Structure API")
         assertTrue(rhettjsContent.contains("World"), "rhettjs.d.ts should contain World API")
     }
