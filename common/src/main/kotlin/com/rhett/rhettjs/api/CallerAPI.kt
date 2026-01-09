@@ -16,7 +16,7 @@ import net.minecraft.world.phys.Vec3
  *
  * Thread-safe: Can be called from async operations (schedules message to main thread).
  */
-class CallerAPI(private val source: CommandSourceStack) {
+class CallerAPI(internal val source: CommandSourceStack) {
 
     /**
      * Send a message to the caller.

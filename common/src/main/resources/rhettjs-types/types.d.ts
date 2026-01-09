@@ -32,6 +32,11 @@ export interface Player {
     setHealth(amount: number): void;
     teleport(position: Position): void;
     sendMessage(message: string): void;
+    sendSuccess(message: string): void; // Green text
+    sendError(message: string): void; // Red text
+    sendWarning(message: string): void; // Yellow text
+    sendInfo(message: string): void; // Gray text
+    sendRaw(json: string): void; // Raw JSON text component
     giveItem(itemId: string, count?: number): void;
 }
 
@@ -42,4 +47,9 @@ export interface Caller {
     // If isPlayer, includes all Player properties
     [key: string]: any;
     sendMessage(message: string): void;
+    sendSuccess(message: string): void; // Green text
+    sendError(message: string): void; // Red text
+    sendWarning(message: string): void; // Yellow text
+    sendInfo(message: string): void; // Gray text
+    sendRaw(json: string): void; // Raw JSON text component
 }

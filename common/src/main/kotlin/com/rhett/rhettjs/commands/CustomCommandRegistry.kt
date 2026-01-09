@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerPlayer
 import org.graalvm.polyglot.Context
 import org.graalvm.polyglot.Value
 import org.graalvm.polyglot.proxy.ProxyObject
+import org.graalvm.polyglot.proxy.ProxyExecutable
 
 /**
  * Registry for custom commands registered via the Commands API in JavaScript.
@@ -40,6 +41,23 @@ class CustomCommandRegistry {
     internal var dispatcher: CommandDispatcher<CommandSourceStack>? = null
     internal var context: Context? = null
     internal var commandBuildContext: net.minecraft.commands.CommandBuildContext? = null
+
+    /**
+     * Cache entry for suggestion results.
+     * Stores the unwrapped array and timestamp for TTL checking.
+     */
+    private data class SuggestionCacheEntry(
+        val results: Value,  // The unwrapped array from provider
+        val timestamp: Long
+    )
+
+    /**
+     * Suggestion cache map: provider function identity hash -> cached results
+     * Cache is checked before executing expensive provider functions (filesystem, API calls, etc.)
+     * and filtering happens on the cached array each time.
+     */
+    private val suggestionCache = mutableMapOf<Int, SuggestionCacheEntry>()
+    private val SUGGESTION_CACHE_TTL_MS = 30000L // 30 seconds
 
     /**
      * Store a command from JavaScript.
@@ -190,7 +208,7 @@ class CustomCommandRegistry {
 
         // Validate argument types for main command
         val arguments = data["arguments"] as? List<*> ?: emptyList<Any>()
-        val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity")
+        val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity", "xyz-position", "xz-position")
 
         // Check for required arguments after optional ones
         var foundOptional = false
@@ -281,6 +299,10 @@ class CustomCommandRegistry {
                 @Suppress("UNCHECKED_CAST")
                 val subArguments = (subcommandData["arguments"] as? List<Map<String, Any?>>) ?: emptyList()
 
+                // Get suggestions map for this subcommand
+                @Suppress("UNCHECKED_CAST")
+                val subSuggestions = subcommandData["suggestions"] as? Map<String, Value>
+
                 if (subArguments.isEmpty()) {
                     // No arguments for subcommand
                     subcommandLiteral.executes { brigadierContext ->
@@ -297,7 +319,7 @@ class CustomCommandRegistry {
                             executeSubcommand(name, subcommandName, brigadierContext, emptyList())
                         }
                     }
-                    buildSubcommandArgumentChain(subcommandLiteral, subArguments, name, subcommandName)
+                    buildSubcommandArgumentChain(subcommandLiteral, subArguments, name, subcommandName, subSuggestions)
                 }
 
                 commandBuilder.then(subcommandLiteral)
@@ -307,6 +329,10 @@ class CustomCommandRegistry {
             // Get arguments list
             @Suppress("UNCHECKED_CAST")
             val arguments = (data["arguments"] as? List<Map<String, Any?>>) ?: emptyList()
+
+            // Get suggestions map
+            @Suppress("UNCHECKED_CAST")
+            val suggestions = data["suggestions"] as? Map<String, Value>
 
             // Build command tree with arguments
             if (arguments.isEmpty()) {
@@ -330,7 +356,7 @@ class CustomCommandRegistry {
                 }
             } else {
                 // Has arguments - build argument chain (also looks up executor dynamically)
-                buildArgumentChain(commandBuilder, arguments, name)
+                buildArgumentChain(commandBuilder, arguments, name, suggestions)
             }
         }
 
@@ -344,7 +370,8 @@ class CustomCommandRegistry {
     private fun buildArgumentChain(
         baseBuilder: LiteralArgumentBuilder<CommandSourceStack>,
         arguments: List<Map<String, Any?>>,
-        commandName: String
+        commandName: String,
+        suggestionsMap: Map<String, Value>? = null
     ) {
         if (arguments.isEmpty()) return
 
@@ -354,10 +381,10 @@ class CustomCommandRegistry {
 
         if (!hasOptionals) {
             // No optional arguments - build simple chain with single execution point
-            buildSimpleArgumentChain(baseBuilder, arguments, commandName, null)
+            buildSimpleArgumentChain(baseBuilder, arguments, commandName, null, suggestionsMap)
         } else {
             // Has optional arguments - build multiple execution points
-            buildOptionalArgumentChain(baseBuilder, arguments, commandName, null)
+            buildOptionalArgumentChain(baseBuilder, arguments, commandName, null, suggestionsMap)
         }
     }
 
@@ -368,13 +395,22 @@ class CustomCommandRegistry {
         baseBuilder: LiteralArgumentBuilder<CommandSourceStack>,
         arguments: List<Map<String, Any?>>,
         commandName: String,
-        subcommandName: String?
+        subcommandName: String?,
+        suggestionsMap: Map<String, Value>? = null
     ) {
         // Build from the last argument backwards
-        var currentNode: Any = Commands.argument(
-            arguments.last()["name"] as String,
-            mapArgumentType(arguments.last()["type"] as String)
-        ).executes { brigadierContext ->
+        val lastArgDef = arguments.last()
+        val lastArgBuilder = Commands.argument(
+            lastArgDef["name"] as String,
+            mapArgumentType(lastArgDef["type"] as String)
+        )
+
+        // Add suggestions (custom or default)
+        val lastArgName = lastArgDef["name"] as String
+        val customProvider = suggestionsMap?.get(lastArgName)
+        addSuggestions(lastArgBuilder, lastArgDef["type"] as String, customProvider)
+
+        var currentNode: Any = lastArgBuilder.executes { brigadierContext ->
             ConfigManager.debug("[Commands] Executing: /$commandName${if (subcommandName != null) " $subcommandName" else ""} (${arguments.size} args)")
             if (subcommandName != null) {
                 executeSubcommand(commandName, subcommandName, brigadierContext, arguments)
@@ -390,6 +426,11 @@ class CustomCommandRegistry {
         for (i in arguments.size - 2 downTo 0) {
             val argDef = arguments[i]
             val argBuilder = Commands.argument(argDef["name"] as String, mapArgumentType(argDef["type"] as String))
+
+            // Add suggestions (custom or default)
+            val argName = argDef["name"] as String
+            val customProvider = suggestionsMap?.get(argName)
+            addSuggestions(argBuilder, argDef["type"] as String, customProvider)
 
             @Suppress("UNCHECKED_CAST")
             when (currentNode) {
@@ -414,7 +455,8 @@ class CustomCommandRegistry {
         baseBuilder: LiteralArgumentBuilder<CommandSourceStack>,
         arguments: List<Map<String, Any?>>,
         commandName: String,
-        subcommandName: String?
+        subcommandName: String?,
+        suggestionsMap: Map<String, Value>? = null
     ) {
         // Build execution points at each optional argument depth
         // Start from the last optional argument and work backwards
@@ -431,6 +473,11 @@ class CustomCommandRegistry {
                 argDef["name"] as String,
                 mapArgumentType(argDef["type"] as String)
             )
+
+            // Add suggestions (custom or default)
+            val argName = argDef["name"] as String
+            val customProvider = suggestionsMap?.get(argName)
+            addSuggestions(argBuilder, argDef["type"] as String, customProvider)
 
             // Add execution point if this is optional OR if next arg is optional
             // (adding execution to last required arg before first optional makes subsequent args show as [optional])
@@ -487,7 +534,8 @@ class CustomCommandRegistry {
         baseBuilder: LiteralArgumentBuilder<CommandSourceStack>,
         arguments: List<Map<String, Any?>>,
         commandName: String,
-        subcommandName: String
+        subcommandName: String,
+        suggestionsMap: Map<String, Value>? = null
     ) {
         if (arguments.isEmpty()) return
 
@@ -497,10 +545,10 @@ class CustomCommandRegistry {
 
         if (!hasOptionals) {
             // No optional arguments - build simple chain
-            buildSimpleArgumentChain(baseBuilder, arguments, commandName, subcommandName)
+            buildSimpleArgumentChain(baseBuilder, arguments, commandName, subcommandName, suggestionsMap)
         } else {
             // Has optional arguments - build multiple execution points
-            buildOptionalArgumentChain(baseBuilder, arguments, commandName, subcommandName)
+            buildOptionalArgumentChain(baseBuilder, arguments, commandName, subcommandName, suggestionsMap)
         }
     }
 
@@ -544,10 +592,238 @@ class CustomCommandRegistry {
         return executeHandler(executor, brigadierContext, arguments, currentContext, commandName, subcommandName)
     }
 
+
+    /**
+     * Add suggestion handler to argument builder.
+     *
+     * Supports custom JS function providers or falls back to type defaults.
+     *
+     * JS function contract:
+     * - No arguments passed to function
+     * - Returns: string[] or Promise<string[]>
+     * - Falsy values (null, undefined, false, 0, "") → empty suggestions
+     * - Arrays → .toString() each element
+     * - Other types → warn and return empty
+     */
+    private fun addSuggestions(
+        argBuilder: RequiredArgumentBuilder<CommandSourceStack, *>,
+        type: String,
+        customProvider: Value? = null
+    ) {
+        // Custom provider takes precedence
+        if (customProvider != null && customProvider.canExecute()) {
+            argBuilder.suggests { _, builder ->
+                try {
+                    val graalContext = this.context
+                    if (graalContext == null) {
+                        ConfigManager.debug("[Commands] Cannot execute suggestions: context not available")
+                        return@suggests builder.buildFuture()
+                    }
+
+                    // Get what the user has typed so far for filtering
+                    val input = builder.remaining.lowercase()
+
+                    // Use provider function identity hash as cache key
+                    val cacheKey = System.identityHashCode(customProvider)
+                    val now = System.currentTimeMillis()
+
+                    // Check cache first
+                    val cachedEntry = suggestionCache[cacheKey]
+                    val unwrapped = if (cachedEntry != null && (now - cachedEntry.timestamp) < SUGGESTION_CACHE_TTL_MS) {
+                        // Cache hit - use cached results
+                        ConfigManager.debug("[Commands] Suggestions cache HIT (key=$cacheKey, age=${now - cachedEntry.timestamp}ms)")
+                        cachedEntry.results
+                    } else {
+                        // Cache miss or expired - execute provider and cache result
+                        if (cachedEntry != null) {
+                            ConfigManager.debug("[Commands] Suggestions cache EXPIRED (key=$cacheKey, age=${now - cachedEntry.timestamp}ms)")
+                        } else {
+                            ConfigManager.debug("[Commands] Suggestions cache MISS (key=$cacheKey)")
+                        }
+
+                        // Enter the context to execute JS code
+                        graalContext.enter()
+                        try {
+                            // Execute provider function (no arguments)
+                            val result = customProvider.execute()
+
+                            // Handle Promise - wait for resolution by flushing AsyncScheduler callbacks
+                            val resolved = if (result.hasMember("then")) {
+                                try {
+                                    // Promise detected - need to wait for it to resolve
+                                    var resolvedValue: Value? = null
+                                    var rejected = false
+                                    var rejectionReason: String? = null
+
+                                    // Attach then/catch handlers to capture the result
+                                    result.invokeMember("then", ProxyExecutable { args ->
+                                        if (args.isNotEmpty()) {
+                                            resolvedValue = args[0]
+                                        }
+                                        null
+                                    }).invokeMember("catch", ProxyExecutable { args ->
+                                        rejected = true
+                                        rejectionReason = if (args.isNotEmpty()) args[0].toString() else "Unknown error"
+                                        null
+                                    })
+
+                                    // Give underlying Future a chance to complete (usually immediate for cached operations)
+                                    // Most structure operations complete quickly since they're just file reads
+                                    Thread.sleep(5)
+
+                                    // Flush AsyncScheduler callbacks to resolve the Promise synchronously
+                                    // This processes any pending promise resolutions that were scheduled via convertFutureToPromise
+                                    com.rhett.rhettjs.async.AsyncScheduler.flushCallbacks()
+
+                                    // Check if Promise was rejected
+                                    if (rejected) {
+                                        ConfigManager.debug("[Commands] Promise rejected in suggestions: $rejectionReason")
+                                        return@suggests builder.buildFuture()
+                                    }
+
+                                    // Return resolved value or original Promise if not yet resolved
+                                    resolvedValue ?: result
+                                } catch (e: Exception) {
+                                    ConfigManager.debug("[Commands] Error waiting for Promise in suggestions: ${e.message}")
+                                    return@suggests builder.buildFuture()
+                                }
+                            } else {
+                                result
+                            }
+
+                            // Handle falsy values → empty suggestions (don't cache these)
+                            if (resolved.isNull() ||
+                                (resolved.isBoolean && !resolved.asBoolean()) ||
+                                (resolved.isNumber && resolved.asDouble() == 0.0) ||
+                                (resolved.isString && resolved.asString().isEmpty())) {
+                                return@suggests builder.buildFuture()
+                            }
+
+                            // Validate it's an array before caching
+                            if (!resolved.hasArrayElements()) {
+                                val typeName = if (resolved.metaObject != null) {
+                                    resolved.metaObject.metaSimpleName ?: "unknown"
+                                } else {
+                                    "unknown"
+                                }
+                                ConfigManager.debug("[Commands] Suggestions returned non-array type: $typeName")
+                                return@suggests builder.buildFuture()
+                            }
+
+                            // Cache the unwrapped array
+                            suggestionCache[cacheKey] = SuggestionCacheEntry(resolved, now)
+                            ConfigManager.debug("[Commands] Cached suggestions (key=$cacheKey, size=${resolved.arraySize})")
+
+                            resolved
+                        } finally {
+                            // Always leave the context
+                            graalContext.leave()
+                        }
+                    }
+
+                    // Now filter the cached/fetched array based on user input
+                    // Check if input contains wildcards and convert to regex pattern
+                    val pattern = if (input.contains('*') || input.contains('?')) {
+                        // Convert wildcards to regex
+                        // Escape regex special chars first, then convert wildcards
+                        val regexStr = input
+                            .replace("\\", "\\\\")  // Escape backslashes
+                            .replace(".", "\\.")    // Escape dots
+                            .replace("(", "\\(")    // Escape parens
+                            .replace(")", "\\)")
+                            .replace("[", "\\[")    // Escape brackets
+                            .replace("]", "\\]")
+                            .replace("{", "\\{")    // Escape braces
+                            .replace("}", "\\}")
+                            .replace("+", "\\+")    // Escape quantifiers
+                            .replace("^", "\\^")    // Escape anchors
+                            .replace("$", "\\$")
+                            .replace("|", "\\|")
+                            .replace("*", ".*")     // * = any characters
+                            .replace("?", ".")      // ? = single character
+                        try {
+                            Regex(regexStr)
+                        } catch (e: Exception) {
+                            ConfigManager.debug("[Commands] Invalid wildcard pattern: $input")
+                            null // Fall back to contains matching
+                        }
+                    } else {
+                        null // No wildcards, use simple contains
+                    }
+
+                    // Filter the unwrapped array and send suggestions
+                    if (unwrapped.hasArrayElements()) {
+                        val size = unwrapped.arraySize.toInt()
+                        var suggestionsAdded = 0
+                        val maxSuggestions = 100 // Limit to prevent overwhelming client
+
+                        for (i in 0 until size) {
+                            // Stop if we've reached the limit
+                            if (suggestionsAdded >= maxSuggestions) {
+                                break
+                            }
+
+                            val item = unwrapped.getArrayElement(i.toLong())
+                            val suggestion = item.toString()
+
+                            // Filter: check if suggestion matches input (wildcard or contains)
+                            if (suggestion.isNotEmpty()) {
+                                val matches = if (pattern != null) {
+                                    // Wildcard matching with regex
+                                    pattern.containsMatchIn(suggestion.lowercase())
+                                } else {
+                                    // Simple substring matching
+                                    suggestion.lowercase().contains(input)
+                                }
+
+                                if (matches) {
+                                    builder.suggest(suggestion)
+                                    suggestionsAdded++
+                                }
+                            }
+                        }
+                        return@suggests builder.buildFuture()
+                    }
+
+                    // Unknown type → warn and return empty
+                    val typeName = if (unwrapped.metaObject != null) {
+                        unwrapped.metaObject.metaSimpleName ?: "unknown"
+                    } else {
+                        "unknown"
+                    }
+                    ConfigManager.debug("[Commands] Suggestions returned non-array type: $typeName")
+                    return@suggests builder.buildFuture()
+                } catch (e: Exception) {
+                    ConfigManager.debug("[Commands] Error executing suggestions provider: ${e.message}")
+                    return@suggests builder.buildFuture()
+                }
+            }
+            return
+        }
+
+        // Fall back to type-based default suggestions
+        when (type) {
+            "int" -> {
+                argBuilder.suggests { _, builder ->
+                    builder.suggest("0")
+                    builder.buildFuture()
+                }
+            }
+            "float" -> {
+                argBuilder.suggests { _, builder ->
+                    builder.suggest("0.0")
+                    builder.buildFuture()
+                }
+            }
+            // Other types (including xyz-position, xz-position) don't override - use native suggestions
+        }
+    }
+
+
     /**
      * Map JavaScript argument type string to Brigadier ArgumentType.
      *
-     * Valid types: string, int, float, player, item, block, entity
+     * Valid types: string, int, float, player, item, block, entity, xyz-position, xz-position
      */
     private fun mapArgumentType(type: String): ArgumentType<*> {
         return when (type) {
@@ -566,6 +842,8 @@ class CustomCommandRegistry {
                 BlockStateArgument.block(buildCtx)
             }
             "entity" -> EntityArgument.entity()
+            "xyz-position" -> net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos()
+            "xz-position" -> net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos()  // Will only use x/z
             else -> throw IllegalArgumentException("Unknown argument type: $type")
         }
     }
@@ -694,6 +972,25 @@ class CustomCommandRegistry {
                         ConfigManager.debug("[Commands] Extracted entity: $entityType")
                         graalContext.asValue(entityInfo)
                     }
+                    "xyz-position" -> {
+                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val parsed = mapOf(
+                            "x" to coordinates.x,
+                            "y" to coordinates.y,
+                            "z" to coordinates.z
+                        )
+                        ConfigManager.debug("[Commands] Extracted xyz-position: $parsed")
+                        graalContext.asValue(parsed)
+                    }
+                    "xz-position" -> {
+                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val parsed = mapOf(
+                            "x" to coordinates.x,
+                            "z" to coordinates.z
+                        )
+                        ConfigManager.debug("[Commands] Extracted xz-position: $parsed")
+                        graalContext.asValue(parsed)
+                    }
                     else -> null
                 }
 
@@ -764,6 +1061,23 @@ class CustomCommandRegistry {
                             "type" to entityType,
                             "uuid" to entity.uuid.toString()
                         ))
+                    }
+                    "xyz-position" -> {
+                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val parsed: Map<String, Int> = mapOf(
+                            "x" to coordinates.x,
+                            "y" to coordinates.y,
+                            "z" to coordinates.z
+                        )
+                        graalContext.asValue(parsed)
+                    }
+                    "xz-position" -> {
+                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val parsed: Map<String, Int> = mapOf(
+                            "x" to coordinates.x,
+                            "z" to coordinates.z
+                        )
+                        graalContext.asValue(parsed)
                     }
                     else -> null
                 }

@@ -77,11 +77,53 @@ object CallerAdapter {
             "isPlayer" to false,
             "dimension" to dimension,
 
-            // Send message method
+            // Send message methods
             "sendMessage" to ProxyExecutable { args ->
                 if (args.isEmpty()) return@ProxyExecutable null
                 val message = args[0].asString()
                 source.sendSuccess({ Component.literal(message) }, false)
+                null
+            },
+
+            "sendSuccess" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                source.sendSuccess({ Component.literal("§a$message") }, false)
+                null
+            },
+
+            "sendError" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                source.sendFailure(Component.literal("§c$message"))
+                null
+            },
+
+            "sendWarning" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                source.sendSuccess({ Component.literal("§e$message") }, false)
+                null
+            },
+
+            "sendInfo" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                source.sendSuccess({ Component.literal("§7$message") }, false)
+                null
+            },
+
+            "sendRaw" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val json = args[0].asString()
+                try {
+                    val component = Component.Serializer.fromJson(json, source.registryAccess())
+                    if (component != null) {
+                        source.sendSuccess({ component }, false)
+                    }
+                } catch (e: Exception) {
+                    source.sendFailure(Component.literal("§c[RhettJS] Failed to parse JSON: ${e.message}"))
+                }
                 null
             }
 

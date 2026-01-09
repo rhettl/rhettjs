@@ -410,7 +410,7 @@ object GraalEngine {
 
         // Inject Script.* for utility scripts (or remove if not utility)
         if (category == ScriptCategory.UTILITY) {
-            injectScriptContext(bindings, additionalBindings)
+            injectScriptContext(bindings, context, additionalBindings)
         } else {
             // Remove Script binding if it exists from previous executions
             if (bindings.hasMember("Script")) {
@@ -1020,12 +1020,37 @@ object GraalEngine {
                 val namespace = if (args.isNotEmpty()) args[0].asString() else null
                 convertFutureToPromise<List<String>>(context, com.rhett.rhettjs.structure.StructureNbtManager.list(namespace))
             },
+            "listGenerated" to ProxyExecutable { args ->
+                val namespace = if (args.isNotEmpty()) args[0].asString() else null
+                convertFutureToPromise<List<String>>(context, com.rhett.rhettjs.structure.StructureNbtManager.listGenerated(namespace))
+            },
             "remove" to ProxyExecutable { args ->
                 if (args.isEmpty()) {
                     return@ProxyExecutable createRejectedPromise(context, "remove() requires a structure name")
                 }
                 val name = args[0].asString()
                 convertFutureToPromise<Boolean>(context, com.rhett.rhettjs.structure.StructureNbtManager.remove(name))
+            },
+            "load" to ProxyExecutable { args ->
+                if (args.isEmpty()) {
+                    return@ProxyExecutable createRejectedPromise(context, "load() requires a structure name")
+                }
+                val name = args[0].asString()
+                convertFutureToPromise(context, com.rhett.rhettjs.structure.StructureNbtManager.load(name))
+            },
+            "save" to ProxyExecutable { args ->
+                if (args.size < 2) {
+                    return@ProxyExecutable createRejectedPromise(context, "save() requires structure name and data")
+                }
+                val name = args[0].asString()
+                val data = convertGraalValueToKotlin(args[1])
+
+                // Convert to StructureData
+                if (data !is com.rhett.rhettjs.structure.models.StructureData) {
+                    return@ProxyExecutable createRejectedPromise(context, "save() requires valid StructureData object")
+                }
+
+                convertFutureToPromise<Void>(context, com.rhett.rhettjs.structure.StructureNbtManager.save(name, data, skipBackup = false))
             },
 
             // Structure operations (async)
@@ -1323,7 +1348,8 @@ object GraalEngine {
                 val pos1 = args[0]
                 val pos2 = args[1]
                 val blockId = args[2].asString()
-                convertFutureToPromise<Int>(context, com.rhett.rhettjs.world.WorldManager.fill(pos1, pos2, blockId))
+                val options = if (args.size > 3) args[3] else null
+                convertFutureToPromise<Int>(context, com.rhett.rhettjs.world.WorldManager.fill(pos1, pos2, blockId, options))
             },
             "replace" to ProxyExecutable { args ->
                 if (args.size < 4) {
@@ -1388,6 +1414,30 @@ object GraalEngine {
                 val weather = args[0].asString()
                 val dimension = if (args.size > 1) args[1].asString() else null
                 convertFutureToPromise<Void>(context, com.rhett.rhettjs.world.WorldManager.setWeather(weather, dimension))
+            },
+
+            // Dimension bounds queries
+            "getDimensionBounds" to ProxyExecutable { args ->
+                val dimension = if (args.isNotEmpty()) args[0].asString() else null
+                convertFutureToPromise<Value>(context, com.rhett.rhettjs.world.WorldManager.getDimensionBounds(dimension))
+            },
+            "getFilledBounds" to ProxyExecutable { args ->
+                if (args.size < 2) {
+                    return@ProxyExecutable createRejectedPromise(context, "getFilledBounds() requires pos1 and pos2")
+                }
+                val pos1 = args[0]
+                val pos2 = args[1]
+                val dimension = if (args.size > 2) args[2].asString() else null
+                convertFutureToPromise<Value?>(context, com.rhett.rhettjs.world.WorldManager.getFilledBounds(pos1, pos2, dimension))
+            },
+            "removeEntities" to ProxyExecutable { args ->
+                if (args.size < 2) {
+                    return@ProxyExecutable createRejectedPromise(context, "removeEntities() requires pos1 and pos2")
+                }
+                val pos1 = args[0]
+                val pos2 = args[1]
+                val options = if (args.size > 2) args[2] else null
+                convertFutureToPromise<Int>(context, com.rhett.rhettjs.world.WorldManager.removeEntities(pos1, pos2, options))
             }
         )
 
@@ -1621,7 +1671,7 @@ object GraalEngine {
                     }
 
                     // Validate argument type
-                    val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity")
+                    val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity", "xyz-position", "xz-position")
                     if (argType !in validTypes) {
                         throw IllegalArgumentException("Invalid argument type: $argType. Valid types: ${validTypes.joinToString(", ")}")
                     }
@@ -1647,6 +1697,33 @@ object GraalEngine {
                         "default" to defaultValue
                     ))
                     commandRegistry.storeCommand(commandName, commandData)  // Persist changes
+
+                    // Return self for chaining
+                    createSubcommandBuilder(commandName, subcommandName)
+                },
+
+                "suggestions" to ProxyExecutable { args ->
+                    if (args.size < 2) {
+                        throw IllegalArgumentException("suggestions() requires argName and provider function")
+                    }
+                    val argName = args[0].asString()
+                    val provider = args[1]
+
+                    if (!provider.canExecute()) {
+                        throw IllegalArgumentException("suggestions() provider must be a function")
+                    }
+
+                    // Get or create suggestions map
+                    @Suppress("UNCHECKED_CAST")
+                    val suggestions = subcommandData.getOrPut("suggestions") {
+                        mutableMapOf<String, Value>()
+                    } as MutableMap<String, Value>
+
+                    // Store provider function keyed by argument name (order-independent)
+                    suggestions[argName] = provider
+                    commandRegistry.storeCommand(commandName, commandData)  // Persist changes
+
+                    ConfigManager.debug("[Commands] Added suggestions for subcommand argument: $commandName $subcommandName.$argName")
 
                     // Return self for chaining
                     createSubcommandBuilder(commandName, subcommandName)
@@ -1747,7 +1824,7 @@ object GraalEngine {
                     }
 
                     // Validate argument type
-                    val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity")
+                    val validTypes = listOf("string", "int", "float", "player", "item", "block", "entity", "xyz-position", "xz-position")
                     if (argType !in validTypes) {
                         throw IllegalArgumentException("Invalid argument type: $argType. Valid types: ${validTypes.joinToString(", ")}")
                     }
@@ -1773,6 +1850,33 @@ object GraalEngine {
                         "default" to defaultValue
                     ))
                     commandRegistry.storeCommand(name, commandData)  // Persist changes
+
+                    // Return self for chaining
+                    createCommandBuilder(name)
+                },
+
+                "suggestions" to ProxyExecutable { args ->
+                    if (args.size < 2) {
+                        throw IllegalArgumentException("suggestions() requires argName and provider function")
+                    }
+                    val argName = args[0].asString()
+                    val provider = args[1]
+
+                    if (!provider.canExecute()) {
+                        throw IllegalArgumentException("suggestions() provider must be a function")
+                    }
+
+                    // Get or create suggestions map
+                    @Suppress("UNCHECKED_CAST")
+                    val suggestions = commandData.getOrPut("suggestions") {
+                        mutableMapOf<String, Value>()
+                    } as MutableMap<String, Value>
+
+                    // Store provider function keyed by argument name (order-independent)
+                    suggestions[argName] = provider
+                    commandRegistry.storeCommand(name, commandData)  // Persist changes
+
+                    ConfigManager.debug("[Commands] Added suggestions for command argument: $name.$argName")
 
                     // Return self for chaining
                     createCommandBuilder(name)
@@ -1877,14 +1981,26 @@ object GraalEngine {
      * Inject Script.* context for utility scripts (rjs/scripts/).
      * Provides Script.caller, Script.args, and Script.argv for command-invoked scripts.
      */
-    private fun injectScriptContext(bindings: Value, additionalBindings: Map<String, Any>) {
+    private fun injectScriptContext(bindings: Value, context: Context, additionalBindings: Map<String, Any>) {
         // Extract Caller and Args from additionalBindings if provided
         val caller = additionalBindings["Caller"]
         val args = additionalBindings["Args"]
 
         if (caller != null || args != null) {
             val scriptContext = mutableMapOf<String, Any?>()
-            if (caller != null) scriptContext["caller"] = caller
+
+            // Convert CallerAPI to JavaScript object using CallerAdapter
+            if (caller != null) {
+                val callerJS = if (caller is com.rhett.rhettjs.api.CallerAPI) {
+                    // Use CallerAdapter to convert to proper JS object with properties
+                    com.rhett.rhettjs.adapter.CallerAdapter.toJS(caller.source, context)
+                } else {
+                    // Fallback if already converted
+                    context.asValue(caller)
+                }
+                scriptContext["caller"] = callerJS
+            }
+
             if (args != null) scriptContext["args"] = args
 
             // Parse args into Script.argv if Args is provided

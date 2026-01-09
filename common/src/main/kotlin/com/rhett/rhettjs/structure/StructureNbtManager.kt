@@ -13,6 +13,7 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import org.graalvm.polyglot.Context
 import org.graalvm.polyglot.Value
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -50,6 +51,14 @@ object StructureNbtManager {
     private var nbtApi: com.rhett.rhettjs.api.NBTAPI? = null
 
     /**
+     * Generated folder structure subdirectory name.
+     * Per Minecraft wiki: runtime structures are saved to generated/<namespace>/structures/ (plural)
+     * This differs from datapack structures which use data/<namespace>/structure/ (singular).
+     * Minecraft's StructureTemplateManager searches both locations.
+     */
+    private const val GENERATED_STRUCTURES_DIR = "structures"
+
+    /**
      * Set the Minecraft server reference.
      * Called during server startup.
      */
@@ -60,7 +69,7 @@ object StructureNbtManager {
             .resolve("generated")
 
         val backupsPath = minecraftServer.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-            .resolve("backups").resolve("structures")
+            .resolve("backups").resolve(GENERATED_STRUCTURES_DIR)
 
         // Ensure base directories exist
         structuresPath?.let { path ->
@@ -74,8 +83,8 @@ object StructureNbtManager {
             ConfigManager.debug("[StructureManager] Created backups directory: $backupsPath")
         }
 
-        // Note: NBTAPI still uses structuresPath as root, but we organize as <root>/<namespace>/structures/
-        // This is handled in getStructurePath()
+        // Note: NBTAPI still uses structuresPath as root, but we organize as <root>/<namespace>/GENERATED_STRUCTURES_DIR/
+        // This matches Minecraft's convention: generated/<namespace>/structures/ (plural for runtime saves)
         nbtApi = com.rhett.rhettjs.api.NBTAPI(structuresPath, backupsPath)
 
         ConfigManager.debug("[StructureManager] Minecraft server reference set")
@@ -105,12 +114,14 @@ object StructureNbtManager {
     }
 
     /**
-     * Get the file path for a structure.
-     * Format: generated/namespace/structures/name.nbt
+     * Get the file path for a structure in the generated folder.
+     * Uses Minecraft's convention: generated/<namespace>/structures/name.nbt (plural)
+     * Note: Datapack structures use data/<namespace>/structure/ (singular), but we save to generated/.
+     * Minecraft's StructureTemplateManager reads from both locations.
      */
     private fun getStructurePath(namespace: String, name: String): Path? {
         val basePath = structuresPath ?: return null
-        return basePath.resolve(namespace).resolve("structures").resolve("$name.nbt")
+        return basePath.resolve(namespace).resolve(GENERATED_STRUCTURES_DIR).resolve("$name.nbt")
     }
 
     /**
@@ -156,8 +167,7 @@ object StructureNbtManager {
         }
 
         try {
-            // Execute on main thread to access StructureTemplateManager
-            srv.execute {
+            val task: () -> Unit = {
                 try {
                     // List all structures from resource system
                     // This includes: world/generated/, datapacks/, mod resources
@@ -184,6 +194,84 @@ object StructureNbtManager {
                     future.completeExceptionally(e)
                 }
             }
+
+            // If already on server thread, execute immediately (e.g., during tab completion)
+            // Otherwise schedule on server thread
+            if (srv.isSameThread()) {
+                task()
+            } else {
+                srv.execute(task)
+            }
+        } catch (e: Exception) {
+            future.completeExceptionally(e)
+        }
+
+        return future
+    }
+
+    /**
+     * List structures from world/generated/ directory only (async).
+     * Unlike list(), this ONLY reads from world/generated/<namespace>/structures/
+     * and excludes vanilla datapacks, mods, etc.
+     * Returns Promise<string[]> where each name is in format "namespace:name".
+     *
+     * @param namespaceFilter Optional namespace filter (null = all namespaces in generated/)
+     */
+    fun listGenerated(namespaceFilter: String?): CompletableFuture<List<String>> {
+        val future = CompletableFuture<List<String>>()
+
+        try {
+            val basePath = structuresPath ?: run {
+                future.completeExceptionally(IllegalStateException("Structures path not initialized"))
+                return future
+            }
+
+            if (!basePath.exists()) {
+                future.complete(emptyList())
+                return future
+            }
+
+            val structures = mutableListOf<String>()
+
+            // Walk through world/generated/ directory
+            Files.walk(basePath)
+                .filter { path ->
+                    // Only .nbt files
+                    path.toString().endsWith(".nbt") && Files.isRegularFile(path)
+                }
+                .forEach { nbtPath ->
+                    try {
+                        // Convert filesystem path back to namespace:name format
+                        // Path: world/generated/minecraft/structures/myhouse.nbt
+                        // Result: minecraft:myhouse
+                        val relativePath = basePath.relativize(nbtPath)
+                        val parts = relativePath.toString().split(File.separator)
+
+                        if (parts.size >= 3) {
+                            val namespace = parts[0]
+                            // parts[1] should be "structures"
+                            // parts[2...] is the structure path (may have subdirs)
+
+                            // Filter by namespace if specified
+                            if (namespaceFilter == null || namespace == namespaceFilter) {
+                                // Reconstruct structure name (remove .nbt extension)
+                                val structurePath = parts.drop(2).joinToString("/")
+                                val structureName = structurePath.removeSuffix(".nbt")
+
+                                // Exclude rjs-large pieces
+                                if (!structureName.startsWith("rjs-large/")) {
+                                    structures.add("$namespace:$structureName")
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        ConfigManager.debug("[StructureManager] Failed to parse structure path: ${nbtPath}: ${e.message}")
+                    }
+                }
+
+            structures.sort()
+            ConfigManager.debug("[StructureManager] Listed ${structures.size} structures from generated/ (namespace=${namespaceFilter ?: "all"})")
+            future.complete(structures)
         } catch (e: Exception) {
             future.completeExceptionally(e)
         }
@@ -303,8 +391,8 @@ object StructureNbtManager {
             }
 
             // Calculate relative path: namespace/structures/name.nbt
-            // This matches datapack format: generated/namespace/structures/name.nbt
-            val relativePath = "$namespace/structures/$name.nbt"
+            // This matches Minecraft's generated folder format (plural): generated/namespace/structures/name.nbt
+            val relativePath = "$namespace/$GENERATED_STRUCTURES_DIR/$name.nbt"
 
             // Convert structure data to JS-friendly map
             val jsData = structureDataToJsMap(data)
@@ -405,6 +493,52 @@ object StructureNbtManager {
             }
         }
 
+        // Read entities
+        val entities = mutableListOf<com.rhett.rhettjs.structure.models.StructureEntity>()
+        if (nbt.contains("entities", 9)) { // 9 = TAG_LIST
+            val entitiesList = nbt.getList("entities", 10) // 10 = CompoundTag
+
+            for (i in 0 until entitiesList.size) {
+                val entityNBT = entitiesList.getCompound(i)
+
+                // Read blockPos (int array or list)
+                val blockPos = if (entityNBT.contains("blockPos", 11)) {
+                    // TAG_INT_ARRAY (type 11)
+                    val arr = entityNBT.getIntArray("blockPos")
+                    listOf(arr[0], arr[1], arr[2])
+                } else if (entityNBT.contains("blockPos", 9)) {
+                    // TAG_LIST (type 9)
+                    val list = entityNBT.getList("blockPos", 3) // 3 = TAG_INT
+                    listOf(list.getInt(0), list.getInt(1), list.getInt(2))
+                } else {
+                    continue // Skip entities without blockPos
+                }
+
+                // Read pos (double list)
+                val pos = if (entityNBT.contains("pos", 9)) {
+                    val posList = entityNBT.getList("pos", 6) // 6 = TAG_DOUBLE
+                    listOf(posList.getDouble(0), posList.getDouble(1), posList.getDouble(2))
+                } else {
+                    continue // Skip entities without pos
+                }
+
+                // Read entity NBT data
+                val entityData = if (entityNBT.contains("nbt")) {
+                    entityNBT.getCompound("nbt")
+                } else {
+                    CompoundTag() // Empty NBT if not present
+                }
+
+                entities.add(
+                    com.rhett.rhettjs.structure.models.StructureEntity(
+                        blockPos = blockPos,
+                        pos = pos,
+                        nbt = entityData
+                    )
+                )
+            }
+        }
+
         // Read metadata (custom)
         val metadata = mutableMapOf<String, String>()
         if (nbt.contains("metadata")) {
@@ -417,6 +551,7 @@ object StructureNbtManager {
         return StructureData(
             size = size,
             blocks = blocks,
+            entities = entities,
             metadata = metadata
         )
     }
@@ -475,6 +610,34 @@ object StructureNbtManager {
             blocksList.add(blockNBT)
         }
         nbt.put("blocks", blocksList)
+
+        // Write entities
+        if (data.entities.isNotEmpty()) {
+            val entitiesList = ListTag()
+            data.entities.forEach { entity ->
+                val entityNBT = CompoundTag()
+
+                // Write blockPos as int array
+                entityNBT.putIntArray("blockPos", intArrayOf(
+                    entity.blockPos[0],
+                    entity.blockPos[1],
+                    entity.blockPos[2]
+                ))
+
+                // Write pos as double list
+                val posList = net.minecraft.nbt.ListTag()
+                posList.add(net.minecraft.nbt.DoubleTag.valueOf(entity.pos[0]))
+                posList.add(net.minecraft.nbt.DoubleTag.valueOf(entity.pos[1]))
+                posList.add(net.minecraft.nbt.DoubleTag.valueOf(entity.pos[2]))
+                entityNBT.put("pos", posList)
+
+                // Write entity NBT data
+                entityNBT.put("nbt", entity.nbt)
+
+                entitiesList.add(entityNBT)
+            }
+            nbt.put("entities", entitiesList)
+        }
 
         // Write metadata
         if (data.metadata.isNotEmpty()) {
@@ -542,6 +705,19 @@ object StructureNbtManager {
             blocksList.add(blockMap)
         }
         map["blocks"] = blocksList
+
+        // Write entities
+        if (data.entities.isNotEmpty()) {
+            val entitiesList = mutableListOf<Map<String, Any>>()
+            data.entities.forEach { entity ->
+                val entityMap = mutableMapOf<String, Any>()
+                entityMap["blockPos"] = entity.blockPos
+                entityMap["pos"] = entity.pos
+                entityMap["nbt"] = entity.nbt
+                entitiesList.add(entityMap)
+            }
+            map["entities"] = entitiesList
+        }
 
         // Write metadata
         if (data.metadata.isNotEmpty()) {
@@ -990,7 +1166,7 @@ object StructureNbtManager {
             }
 
             val (namespace, name) = parseStructureName(nameWithNamespace)
-            val relativePath = "$namespace/structures/$name.nbt"
+            val relativePath = "$namespace/$GENERATED_STRUCTURES_DIR/$name.nbt"
 
             // Use NBTAPI's backup listing
             val backups = api.listBackups(relativePath)
@@ -1020,7 +1196,7 @@ object StructureNbtManager {
             }
 
             val (namespace, name) = parseStructureName(nameWithNamespace)
-            val relativePath = "$namespace/structures/$name.nbt"
+            val relativePath = "$namespace/$GENERATED_STRUCTURES_DIR/$name.nbt"
 
             // Use NBTAPI's restore functionality
             val success = api.restoreFromBackup(relativePath, timestamp)

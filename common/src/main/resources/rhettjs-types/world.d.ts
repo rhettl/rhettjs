@@ -5,6 +5,46 @@
 import { Position, Block, Player } from './types';
 
 /**
+ * Bounding box for exclusion zones
+ */
+export interface BoundingBox {
+    min: Position;
+    max: Position;
+}
+
+/**
+ * Options for World.fill()
+ */
+export interface FillOptions {
+    /** Array of bounding boxes to exclude from filling */
+    exclude?: BoundingBox[];
+}
+
+/**
+ * Dimension height bounds
+ */
+export interface DimensionBounds {
+    /** Lowest Y coordinate in dimension (e.g., -64) */
+    minY: number;
+    /** Highest Y coordinate in dimension (e.g., 320) */
+    maxY: number;
+    /** Lowest buildable Y coordinate */
+    minBuildHeight: number;
+    /** Highest buildable Y coordinate */
+    maxBuildHeight: number;
+}
+
+/**
+ * Filled block bounds in a region
+ */
+export interface FilledBounds {
+    /** Lowest Y coordinate with non-air blocks */
+    minY: number;
+    /** Highest Y coordinate with non-air blocks */
+    maxY: number;
+}
+
+/**
  * World manipulation and queries (all async)
  * @example
  * const block = await World.getBlock({ x: 100, y: 64, z: 200 });
@@ -57,9 +97,22 @@ declare namespace World {
      * @param pos1 - First corner
      * @param pos2 - Second corner
      * @param blockId - Block identifier
+     * @param options - Optional fill options (exclusion zones)
      * @returns Number of blocks placed
+     * @example
+     * // Fill with exclusion zones
+     * await World.fill(
+     *   { x: -50, y: -64, z: -50 },
+     *   { x: 50, y: 320, z: 50 },
+     *   "minecraft:air",
+     *   {
+     *     exclude: [
+     *       { min: {x: -5, y: 60, z: -5}, max: {x: 5, y: 100, z: 5} }
+     *     ]
+     *   }
+     * );
      */
-    function fill(pos1: Position, pos2: Position, blockId: string): Promise<number>;
+    function fill(pos1: Position, pos2: Position, blockId: string, options?: FillOptions): Promise<number>;
 
     /**
      * Replace blocks in region matching filter
@@ -127,6 +180,72 @@ declare namespace World {
      * @param dimension - Dimension identifier (optional)
      */
     function setWeather(weather: "clear" | "rain" | "thunder", dimension?: string): Promise<void>;
+
+    /**
+     * Get dimension height bounds (absolute world limits)
+     * @param dimension - Dimension identifier (optional, defaults to overworld)
+     * @returns Dimension bounds object with min/max Y coordinates
+     * @example
+     * const bounds = await World.getDimensionBounds();
+     * console.log(`World: ${bounds.minY} to ${bounds.maxY}`);
+     * // World: -64 to 320
+     */
+    function getDimensionBounds(dimension?: string): Promise<DimensionBounds>;
+
+    /**
+     * Get vertical bounds of non-air blocks in a horizontal region
+     * Scans the region to find the lowest and highest Y coordinates with blocks.
+     * Returns null if the entire region is empty (all air).
+     * @param pos1 - First corner (x/z used, y ignored)
+     * @param pos2 - Second corner (x/z used, y ignored)
+     * @param dimension - Dimension identifier (optional, defaults to overworld)
+     * @returns Filled bounds object with min/max Y of blocks, or null if all air
+     * @example
+     * const bounds = await World.getFilledBounds(
+     *   { x: -50, z: -50 },
+     *   { x: 50, z: 50 }
+     * );
+     * if (bounds) {
+     *   console.log(`Blocks from Y ${bounds.minY} to ${bounds.maxY}`);
+     *   // Only clear the vertical range with blocks
+     *   await World.fill(
+     *     { x: -50, y: bounds.minY, z: -50 },
+     *     { x: 50, y: bounds.maxY, z: 50 },
+     *     "minecraft:air"
+     *   );
+     * }
+     */
+    function getFilledBounds(pos1: Position, pos2: Position, dimension?: string): Promise<FilledBounds | null>;
+
+    /**
+     * Remove all entities in a region (without dropping items)
+     * Removes entities directly without killing them, so no item drops.
+     * Useful for cleaning up after structure placement.
+     * @param pos1 - First corner
+     * @param pos2 - Second corner
+     * @param options - Optional filter options
+     * @returns Number of entities removed
+     * @example
+     * // Remove all entities except players
+     * const removed = await World.removeEntities(
+     *   { x: -50, y: -64, z: -50 },
+     *   { x: 50, y: 320, z: 50 },
+     *   { excludePlayers: true }
+     * );
+     * console.log(`Removed ${removed} entities`);
+     *
+     * @example
+     * // Remove only specific entity types
+     * await World.removeEntities(
+     *   pos1, pos2,
+     *   { types: ["minecraft:villager", "minecraft:item"] }
+     * );
+     */
+    function removeEntities(pos1: Position, pos2: Position, options?: {
+        excludePlayers?: boolean;
+        types?: string[];  // If provided, only remove these entity types
+        dimension?: string;
+    }): Promise<number>;
 }
 
 export default World;

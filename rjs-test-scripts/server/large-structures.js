@@ -1,6 +1,7 @@
 import '../modules/array-polyfill.js'
 import { LargeStructureNbt as Structure } from "rhettjs/structure";
 import Commands from "rhettjs/commands";
+import Store from "rhettjs/store";
 
 
 const cmd = Commands.register('large-structure')
@@ -16,10 +17,25 @@ cmd.subcommand('save')
       getPosition(playerName, 2),
     ];
 
-    await Structure.capture(pos[0], pos[1], args.name, {
-      pieceSize: { x: args.size, y: args.size, z: args.size },
-    });
+    if (!pos[0] || !pos[1]) {
+      caller.sendMessage(`Missing position 1 or 2. Please set both positions first.`);
+      return 0;
+    }
 
+    try {
+      caller.sendMessage(`Capturing large structure: ${args.name} (piece size: ${args.size}x${args.size}x${args.size})...`);
+
+      await Structure.capture(pos[0], pos[1], args.name, {
+        pieceSize: { x: args.size, y: args.size, z: args.size },
+      });
+
+      caller.sendMessage(`Successfully saved large structure: ${args.name}`);
+      return 1;
+    } catch (err) {
+      caller.sendMessage(`Failed to capture structure: ${err.message}`);
+      console.error(err.stack || err);
+      return 0;
+    }
   });
 
 cmd.subcommand('list')

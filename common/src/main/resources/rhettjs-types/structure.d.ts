@@ -23,6 +23,60 @@ export interface PlaceOptions {
      * - "overlay": Only place blocks where target location is air (fills empty space only)
      */
     mode?: "replace" | "keep_air" | "overlay";
+    /**
+     * Vertical alignment for structure placement:
+     * - "bottom" (default): Align structure bottom to Y position
+     * - "top": Align structure top to Y position
+     * - "center": Center structure vertically at Y position
+     * - number: Offset Y position by this amount (e.g., 5 = place 5 blocks higher, -5 = place 5 blocks lower)
+     * @example
+     * { vAlign: "bottom" }  // Structure bottom at Y
+     * { vAlign: "top" }     // Structure top at Y
+     * { vAlign: "center" }  // Structure center at Y
+     * { vAlign: 5 }         // Offset +5 blocks
+     * { vAlign: -10 }       // Offset -10 blocks
+     */
+    vAlign?: "bottom" | "top" | "center" | number;
+}
+
+/** Entity in structure NBT data */
+export interface StructureEntity {
+    /** Block-relative position as integers */
+    blockPos: [number, number, number];
+    /** Entity position as doubles (precise position) */
+    pos: [number, number, number];
+    /** Entity NBT data (type, properties, etc.) */
+    nbt: {
+        /** Entity type ID (e.g., "minecraft:painting", "minecraft:armor_stand") */
+        id: string;
+        /** Additional entity-specific NBT data */
+        [key: string]: any;
+    };
+}
+
+/** Structure data format returned by load() */
+export interface StructureData {
+    /** Structure size {x, y, z} */
+    size: {
+        x: number;
+        y: number;
+        z: number;
+    };
+    /** List of blocks in the structure */
+    blocks: Array<{
+        x: number;
+        y: number;
+        z: number;
+        block: {
+            name: string;
+            properties: Record<string, string>;
+        };
+        blockEntityData?: any;
+    }>;
+    /** List of entities in the structure */
+    entities: StructureEntity[];
+    /** Structure metadata (author, description, etc.) */
+    metadata: Record<string, string>;
 }
 
 /** Options for large structure capture */
@@ -36,6 +90,32 @@ export interface CaptureLargeOptions extends CaptureOptions {
  */
 declare namespace StructureNbt {
     /**
+     * Load structure data from global resources
+     * Searches entire resource system: generated/, datapacks/, mod resources (in priority order)
+     * Provides low-level access to structure NBT for custom manipulation.
+     * @param name - Structure name in format "[namespace:]name"
+     * @returns Structure data with blocks, size, metadata
+     * @example
+     * const data = await StructureNbt.load('minecraft:village/plains/houses/plains_small_house_1');
+     * console.log(`Structure size: ${data.size.x}x${data.size.y}x${data.size.z}`);
+     * console.log(`Contains ${data.blocks.length} blocks`);
+     */
+    function load(name: string): Promise<StructureData>;
+
+    /**
+     * Save structure data to owned location (generated/<namespace>/structures/)
+     * Low-level write for custom structure manipulation.
+     * Automatically creates backup before overwriting existing files.
+     * @param name - Structure name in format "[namespace:]name"
+     * @param data - Structure data to save
+     * @example
+     * const data = await StructureNbt.load('test:house');
+     * // ... modify data.blocks, data.size, etc. ...
+     * await StructureNbt.save('test:house', data);
+     */
+    function save(name: string, data: StructureData): Promise<void>;
+
+    /**
      * Check if structure exists
      * @param name - Structure name in format "[namespace:]name"
      * @returns True if exists
@@ -48,6 +128,20 @@ declare namespace StructureNbt {
      * @returns Array of structure names
      */
     function list(namespace?: string): Promise<string[]>;
+
+    /**
+     * List structures from world/generated/ only (excludes datapacks and mods)
+     * Only returns structures created/saved by your scripts, not vanilla or mod resources
+     * @param namespace - Optional namespace filter
+     * @returns Array of structure names from generated/ directory only
+     * @example
+     * // List all your custom structures
+     * const myStructures = await StructureNbt.listGenerated();
+     *
+     * // List only your 'minecraft' namespace structures
+     * const minecraftStructures = await StructureNbt.listGenerated('minecraft');
+     */
+    function listGenerated(namespace?: string): Promise<string[]>;
 
     /**
      * Delete structure

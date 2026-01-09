@@ -55,6 +55,18 @@ object LargeStructureNbtManager {
     internal var structuresPath: Path? = null
 
     /**
+     * Generated folder structure subdirectory name (same as StructureNbtManager).
+     * Per Minecraft wiki: runtime structures are saved to generated/<namespace>/structures/ (plural)
+     */
+    private const val GENERATED_STRUCTURES_DIR = "structures"
+
+    /**
+     * Subdirectory for RhettJS large structures (multi-chunk NBT structures).
+     * Stored as: generated/<namespace>/structures/rjs-large/<name>/<X>_<Y>_<Z>.nbt
+     */
+    private const val RJS_LARGE_SUBDIR = "rjs-large"
+
+    /**
      * Set the Minecraft server reference.
      * Called during server startup.
      */
@@ -65,7 +77,7 @@ object LargeStructureNbtManager {
             .resolve("generated")
 
         val backupsPath = minecraftServer.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-            .resolve("backups").resolve("structures")
+            .resolve("backups").resolve(GENERATED_STRUCTURES_DIR)
 
         // Ensure base directories exist
         structuresPath?.let { path ->
@@ -108,12 +120,12 @@ object LargeStructureNbtManager {
     }
 
     /**
-     * Get the file path for a structure.
-     * Format: generated/namespace/structures/name.nbt
+     * Get the file path for a structure piece in the generated folder.
+     * Format: generated/<namespace>/structures/name.nbt (may include rjs-large/ in name)
      */
     private fun getStructurePath(namespace: String, name: String): Path? {
         val basePath = structuresPath ?: return null
-        return basePath.resolve(namespace).resolve("structures").resolve("$name.nbt")
+        return basePath.resolve(namespace).resolve(GENERATED_STRUCTURES_DIR).resolve("$name.nbt")
     }
 
 
@@ -159,7 +171,7 @@ object LargeStructureNbtManager {
     private fun backupLargeStructure(namespace: String, baseName: String): Boolean {
         try {
             // Check if source directory exists
-            val sourceDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val sourceDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (sourceDir == null || !sourceDir.exists() || !Files.isDirectory(sourceDir)) {
                 ConfigManager.debug("[LargeStructureNbtManager] No existing large structure to backup: $namespace:$baseName")
                 return true // Nothing to backup, not an error
@@ -176,7 +188,7 @@ object LargeStructureNbtManager {
             }
 
             // Create backup directory with timestamp
-            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve("structures")?.resolve("rjs-large")
+            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)
             if (backupsPath == null) {
                 ConfigManager.debug("[LargeStructureNbtManager] Backups path not available")
                 return false
@@ -226,7 +238,7 @@ object LargeStructureNbtManager {
      * Capture a large region split into multiple piece files (async).
      * Returns Promise<void> after saving all piece files.
      *
-     * Large structures are stored in: structures/rjs-large/<name>/X_Y_Z.nbt
+     * Large structures are stored in: generated/<namespace>/structures/rjs-large/<name>/X_Y_Z.nbt
      * The 0_0_0.nbt file contains metadata.requires[] with required mod namespaces.
      *
      * @param pos1 First corner position {x, y, z, dimension?}
@@ -313,7 +325,7 @@ object LargeStructureNbtManager {
             backupLargeStructure(namespace, baseName)
 
             // Clean up old pieces in write directory
-            val largeStructDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val largeStructDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (largeStructDir != null && largeStructDir.exists() && Files.isDirectory(largeStructDir)) {
                 // Delete all existing .nbt files in the directory
                 Files.list(largeStructDir)
@@ -341,7 +353,7 @@ object LargeStructureNbtManager {
                         val pieceMaxZ = minOf(pieceMinZ + pieceSizeZ - 1, maxZ)
 
                         // Create piece name: rjs-large/<name>/X_Y_Z
-                        val pieceName = "$namespace:rjs-large/$baseName/${gridX}_${gridY}_${gridZ}"
+                        val pieceName = "$namespace:$RJS_LARGE_SUBDIR/$baseName/${gridX}_${gridY}_${gridZ}"
 
                         // Create position values for capture
                         val context = graalContext
@@ -477,10 +489,10 @@ object LargeStructureNbtManager {
 
                     // DEBUG: Log all rjs-large paths for this namespace
                     ConfigManager.debug("[LargeStructureNbtManager] === Debugging placeLarge for $namespace:$baseName ===")
-                    ConfigManager.debug("[LargeStructureNbtManager] Looking for paths starting with: rjs-large/$baseName/")
+                    ConfigManager.debug("[LargeStructureNbtManager] Looking for paths starting with: $RJS_LARGE_SUBDIR/$baseName/")
 
                     val allRjsLargePaths = allTemplates
-                        .filter { it.namespace == namespace && it.path.startsWith("rjs-large/") }
+                        .filter { it.namespace == namespace && it.path.startsWith("$RJS_LARGE_SUBDIR/") }
                     ConfigManager.debug("[LargeStructureNbtManager] Found ${allRjsLargePaths.size} rjs-large paths in namespace $namespace:")
                     allRjsLargePaths.forEach {
                         ConfigManager.debug("[LargeStructureNbtManager]   - ${it.namespace}:${it.path}")
@@ -490,9 +502,9 @@ object LargeStructureNbtManager {
                     val pieceFiles = allTemplates
                         .filter { loc ->
                             val matches = loc.namespace == namespace &&
-                                loc.path.startsWith("rjs-large/$baseName/")
-                            if (!matches && loc.namespace == namespace && loc.path.startsWith("rjs-large/")) {
-                                ConfigManager.debug("[LargeStructureNbtManager] Piece ${loc.path} does NOT match filter rjs-large/$baseName/")
+                                loc.path.startsWith("$RJS_LARGE_SUBDIR/$baseName/")
+                            if (!matches && loc.namespace == namespace && loc.path.startsWith("$RJS_LARGE_SUBDIR/")) {
+                                ConfigManager.debug("[LargeStructureNbtManager] Piece ${loc.path} does NOT match filter $RJS_LARGE_SUBDIR/$baseName/")
                             }
                             matches
                         }
@@ -548,7 +560,7 @@ object LargeStructureNbtManager {
         try {
 
             // Load 0_0_0 to get piece size
-            val originLoadFuture = load("$namespace:rjs-large/$baseName/0_0_0")
+            val originLoadFuture = load("$namespace:$RJS_LARGE_SUBDIR/$baseName/0_0_0")
 
             originLoadFuture.whenComplete { originData, throwable ->
                 if (throwable != null) {
@@ -578,7 +590,7 @@ object LargeStructureNbtManager {
                         }
 
                         // Load max piece to get remainder size
-                        val maxPieceLoadFuture = load("$namespace:rjs-large/$baseName/${maxGridX}_${maxGridY}_${maxGridZ}")
+                        val maxPieceLoadFuture = load("$namespace:$RJS_LARGE_SUBDIR/$baseName/${maxGridX}_${maxGridY}_${maxGridZ}")
                         val maxPieceSize = maxPieceLoadFuture.get() // Blocking wait - TODO: make this async
                         intArrayOf(
                             maxGridX * pieceSizeX + maxPieceSize.size.x,
@@ -633,7 +645,7 @@ object LargeStructureNbtManager {
                                     }
 
                                     // Place this piece (delegate to StructureNbtManager)
-                                    val pieceFuture = StructureNbtManager.place(piecePos, "$namespace:rjs-large/$baseName/$pieceName", pieceOptions)
+                                    val pieceFuture = StructureNbtManager.place(piecePos, "$namespace:$RJS_LARGE_SUBDIR/$baseName/$pieceName", pieceOptions)
                                     placeFutures.add(pieceFuture)
 
                                 } finally {
@@ -676,14 +688,14 @@ object LargeStructureNbtManager {
             val (namespace, baseName) = parseStructureName(nameWithNamespace)
 
             // Verify this is a large structure
-            val largeDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val largeDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (largeDir == null || !largeDir.exists() || !Files.isDirectory(largeDir)) {
                 future.completeExceptionally(IllegalArgumentException("Large structure not found: $nameWithNamespace"))
                 return future
             }
 
             // Load origin piece to get piece size
-            val originLoadFuture = load("$namespace:rjs-large/$baseName/0_0_0")
+            val originLoadFuture = load("$namespace:$RJS_LARGE_SUBDIR/$baseName/0_0_0")
 
             originLoadFuture.whenComplete { originData, throwable ->
                 if (throwable != null) {
@@ -714,7 +726,7 @@ object LargeStructureNbtManager {
                     }
 
                     // Load max piece to get remainder size
-                    val maxPieceLoadFuture = load("$namespace:rjs-large/$baseName/${maxGridX}_${maxGridY}_${maxGridZ}")
+                    val maxPieceLoadFuture = load("$namespace:$RJS_LARGE_SUBDIR/$baseName/${maxGridX}_${maxGridY}_${maxGridZ}")
 
                     maxPieceLoadFuture.whenComplete { maxPieceData, maxThrowable ->
                         if (maxThrowable != null) {
@@ -771,7 +783,7 @@ object LargeStructureNbtManager {
                             // Filter by namespace if specified
                             (namespaceFilter == null || loc.namespace == namespaceFilter) &&
                             // Only include rjs-large pieces
-                            loc.path.startsWith("rjs-large/")
+                            loc.path.startsWith("$RJS_LARGE_SUBDIR/")
                         }
                         .mapNotNull { loc ->
                             // Extract structure name from path (e.g., "rjs-large/castle/0_0_0" -> "castle")
@@ -812,7 +824,7 @@ object LargeStructureNbtManager {
             val (namespace, baseName) = parseStructureName(nameWithNamespace)
 
             // Get large structure directory
-            val largeDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val largeDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (largeDir == null || !largeDir.exists() || !Files.isDirectory(largeDir)) {
                 future.complete(false)
                 return future
@@ -852,7 +864,7 @@ object LargeStructureNbtManager {
             val (namespace, baseName) = parseStructureName(nameWithNamespace)
 
             // Get large structure directory
-            val largeDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val largeDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (largeDir == null || !largeDir.exists() || !Files.isDirectory(largeDir)) {
                 future.completeExceptionally(IllegalArgumentException("Large structure not found: $nameWithNamespace"))
                 return future
@@ -874,7 +886,7 @@ object LargeStructureNbtManager {
 
             // Replace blocks in each piece (delegate to StructureNbtManager)
             val replaceFutures = pieceFiles.map { pieceName ->
-                val pieceFullName = "$namespace:rjs-large/$baseName/$pieceName"
+                val pieceFullName = "$namespace:$RJS_LARGE_SUBDIR/$baseName/$pieceName"
                 StructureNbtManager.blocksReplace(pieceFullName, replacementMap)
             }
 
@@ -909,7 +921,7 @@ object LargeStructureNbtManager {
      * @param baseName Structure base name (without rjs-large prefix)
      */
     private fun updateLargeStructureMetadata(namespace: String, baseName: String) {
-        val originPath = getStructurePath(namespace, "rjs-large/$baseName/0_0_0")
+        val originPath = getStructurePath(namespace, "$RJS_LARGE_SUBDIR/$baseName/0_0_0")
         if (originPath == null || !originPath.exists()) {
             ConfigManager.debug("[LargeStructureNbtManager] Warning: 0_0_0.nbt not found for large structure")
             return
@@ -919,7 +931,7 @@ object LargeStructureNbtManager {
         val originNBT = NbtIo.readCompressed(originPath, net.minecraft.nbt.NbtAccounter.unlimitedHeap())
 
         // Scan all pieces to collect required namespaces
-        val largeDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+        val largeDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
         val allNamespaces = mutableSetOf<String>()
 
         if (largeDir != null && largeDir.exists()) {
@@ -979,7 +991,7 @@ object LargeStructureNbtManager {
             val (namespace, baseName) = parseStructureName(nameWithNamespace)
 
             // Get backups directory
-            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve("structures")?.resolve("rjs-large")
+            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)
             if (backupsPath == null || !backupsPath.exists()) {
                 future.complete(emptyList())
                 return future
@@ -1018,7 +1030,7 @@ object LargeStructureNbtManager {
             val (namespace, baseName) = parseStructureName(nameWithNamespace)
 
             // Get backups directory
-            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve("structures")?.resolve("rjs-large")
+            val backupsPath = structuresPath?.parent?.resolve("backups")?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)
             if (backupsPath == null || !backupsPath.exists()) {
                 future.completeExceptionally(IllegalArgumentException("No backups found for: $nameWithNamespace"))
                 return future
@@ -1044,7 +1056,7 @@ object LargeStructureNbtManager {
             }
 
             // Get target directory
-            val targetDir = structuresPath?.resolve(namespace)?.resolve("structures")?.resolve("rjs-large")?.resolve(baseName)
+            val targetDir = structuresPath?.resolve(namespace)?.resolve(GENERATED_STRUCTURES_DIR)?.resolve(RJS_LARGE_SUBDIR)?.resolve(baseName)
             if (targetDir == null) {
                 future.completeExceptionally(IllegalStateException("Target directory not available"))
                 return future

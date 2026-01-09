@@ -138,4 +138,33 @@ object AsyncScheduler {
             return activeTimers.size
         }
     }
+
+    /**
+     * Immediately execute all pending callbacks without waiting for the next tick.
+     * This is useful for synchronous contexts that need to resolve Promises immediately,
+     * such as command tab completion.
+     *
+     * CAUTION: This should only be called from the server thread or in contexts where
+     * it's safe to execute callbacks synchronously.
+     */
+    fun flushCallbacks() {
+        if (pendingCallbacks.isNotEmpty()) {
+            val callbacks = synchronized(pendingCallbacks) {
+                val copy = pendingCallbacks.toList()
+                pendingCallbacks.clear()
+                copy
+            }
+
+            ConfigManager.debug("[AsyncScheduler] Flushing ${callbacks.size} pending callback(s)")
+
+            // Execute callbacks
+            callbacks.forEach { callback ->
+                try {
+                    callback()
+                } catch (e: Exception) {
+                    RhettJSCommon.LOGGER.error("[RhettJS] Error executing flushed callback", e)
+                }
+            }
+        }
+    }
 }

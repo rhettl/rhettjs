@@ -5,7 +5,7 @@
 /**
  * Options for WorldgenStructure.place()
  */
-export interface WorldgenStructurePlaceOptions {
+interface WorldgenStructurePlaceOptions {
     /** X coordinate (center of structure) */
     x: number;
 
@@ -40,7 +40,7 @@ export interface WorldgenStructurePlaceOptions {
 /**
  * Result from WorldgenStructure.place()
  */
-export interface WorldgenStructurePlaceResult {
+interface WorldgenStructurePlaceResult {
     /** Whether placement succeeded */
     success: boolean;
 
@@ -66,7 +66,7 @@ export interface WorldgenStructurePlaceResult {
 /**
  * Options for WorldgenStructure.placeJigsaw()
  */
-export interface WorldgenStructurePlaceJigsawOptions {
+interface WorldgenStructurePlaceJigsawOptions {
     /** Template pool name (e.g., "minecraft:village/plains/town_centers") */
     pool: string;
 
@@ -95,7 +95,7 @@ export interface WorldgenStructurePlaceJigsawOptions {
 /**
  * Result from WorldgenStructure.placeJigsaw()
  */
-export interface WorldgenStructurePlaceJigsawResult {
+interface WorldgenStructurePlaceJigsawResult {
     /** Whether placement succeeded */
     success: boolean;
 
@@ -119,7 +119,7 @@ export interface WorldgenStructurePlaceJigsawResult {
  * Information about a worldgen structure.
  * Returned by WorldgenStructure.info()
  */
-export interface WorldgenStructureInfo {
+interface WorldgenStructureInfo {
     /** Full name with namespace (e.g., "minecraft:village_plains") */
     name: string;
 

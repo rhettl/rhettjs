@@ -70,6 +70,48 @@ object PlayerAdapter {
                 null
             },
 
+            "sendSuccess" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                player.sendSystemMessage(Component.literal("§a$message"))
+                null
+            },
+
+            "sendError" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                player.sendSystemMessage(Component.literal("§c$message"))
+                null
+            },
+
+            "sendWarning" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                player.sendSystemMessage(Component.literal("§e$message"))
+                null
+            },
+
+            "sendInfo" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val message = args[0].asString()
+                player.sendSystemMessage(Component.literal("§7$message"))
+                null
+            },
+
+            "sendRaw" to ProxyExecutable { args ->
+                if (args.isEmpty()) return@ProxyExecutable null
+                val json = args[0].asString()
+                try {
+                    val component = Component.Serializer.fromJson(json, player.server.registryAccess())
+                    if (component != null) {
+                        player.sendSystemMessage(component)
+                    }
+                } catch (e: Exception) {
+                    player.sendSystemMessage(Component.literal("§c[RhettJS] Failed to parse JSON: ${e.message}"))
+                }
+                null
+            },
+
             "teleport" to ProxyExecutable { args ->
                 if (args.isEmpty()) return@ProxyExecutable null
 

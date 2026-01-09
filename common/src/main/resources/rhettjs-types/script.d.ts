@@ -2,16 +2,30 @@
 // Version: 0.3.0
 // Last updated: 2026-01-06
 
+import { Caller } from './types';
+
 /**
- * Command-line argument parsing for utility scripts
+ * Script execution context for utility scripts
  * @example
  * // Executed as: /rjs run myscript player1 -x=100 --name=Steve -abc
+ * console.log(Script.caller.name);  // Player who ran the command
  * Script.argv.get('x')      // 100
  * Script.argv.get('name')   // "Steve"
  * Script.argv.get('a')      // true
  * Script.argv.get(0)        // "player1"
  */
 declare namespace Script {
+    /**
+     * The caller who executed /rjs run
+     * Contains information about the command source (player, console, command block, etc.)
+     */
+    const caller: Caller;
+
+    /**
+     * Raw arguments array passed to the script
+     */
+    const args: string[];
+
     namespace argv {
         /**
          * Get flag value by name or positional argument by index

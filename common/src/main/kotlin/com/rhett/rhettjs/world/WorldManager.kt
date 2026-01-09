@@ -281,7 +281,7 @@ object WorldManager {
      * Fill region with blocks (async).
      * Returns Promise<number> (count of blocks placed).
      */
-    fun fill(pos1: Value, pos2: Value, blockId: String): CompletableFuture<Int> {
+    fun fill(pos1: Value, pos2: Value, blockId: String, options: Value? = null): CompletableFuture<Int> {
         val future = CompletableFuture<Int>()
         val srv = server ?: run {
             future.completeExceptionally(IllegalStateException("Server not available"))
@@ -319,20 +319,55 @@ object WorldManager {
                     // Create region
                     val region = Region.fromCorners(x1, y1, z1, x2, y2, z2)
 
-                    // Create blocks list
+                    // Parse exclusion zones from options
+                    val exclusionZones = mutableListOf<Region>()
+                    if (options != null && options.hasMember("exclude")) {
+                        val excludeArray = options.getMember("exclude")
+                        if (excludeArray.hasArrayElements()) {
+                            val size = excludeArray.arraySize
+                            for (i in 0 until size) {
+                                val box = excludeArray.getArrayElement(i)
+                                if (box.hasMember("min") && box.hasMember("max")) {
+                                    val min = box.getMember("min")
+                                    val max = box.getMember("max")
+                                    val minX = min.getMember("x").asInt()
+                                    val minY = min.getMember("y").asInt()
+                                    val minZ = min.getMember("z").asInt()
+                                    val maxX = max.getMember("x").asInt()
+                                    val maxY = max.getMember("y").asInt()
+                                    val maxZ = max.getMember("z").asInt()
+                                    exclusionZones.add(Region.fromCorners(minX, minY, minZ, maxX, maxY, maxZ))
+                                }
+                            }
+                        }
+                    }
+
+                    // Helper to check if position is in any exclusion zone
+                    fun isExcluded(x: Int, y: Int, z: Int): Boolean {
+                        return exclusionZones.any { zone ->
+                            x >= zone.minX && x <= zone.maxX &&
+                            y >= zone.minY && y <= zone.maxY &&
+                            z >= zone.minZ && z <= zone.maxZ
+                        }
+                    }
+
+                    // Create blocks list (excluding zones)
                     val blocks = mutableListOf<PositionedBlock>()
                     for (x in region.minX..region.maxX) {
                         for (y in region.minY..region.maxY) {
                             for (z in region.minZ..region.maxZ) {
-                                blocks.add(
-                                    PositionedBlock(
-                                        x = x,
-                                        y = y,
-                                        z = z,
-                                        block = BlockData(name = blockId, properties = emptyMap()),
-                                        blockEntityData = null
+                                // Skip if in exclusion zone
+                                if (!isExcluded(x, y, z)) {
+                                    blocks.add(
+                                        PositionedBlock(
+                                            x = x,
+                                            y = y,
+                                            z = z,
+                                            block = BlockData(name = blockId, properties = emptyMap()),
+                                            blockEntityData = null
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
                     }
@@ -619,6 +654,313 @@ object WorldManager {
         return srv.levelKeys().map { dimensionKey ->
             dimensionKey.location().toString()
         }.sorted()
+    }
+
+    /**
+     * Get dimension height bounds (async).
+     * Returns Promise<DimensionBounds> with minY, maxY, minBuildHeight, maxBuildHeight.
+     */
+    fun getDimensionBounds(dimension: String?): CompletableFuture<Value> {
+        val future = CompletableFuture<Value>()
+        val srv = server ?: run {
+            future.completeExceptionally(IllegalStateException("Server not available"))
+            return future
+        }
+        val adapter = worldAdapter ?: run {
+            future.completeExceptionally(IllegalStateException("WorldAdapter not initialized"))
+            return future
+        }
+
+        srv.execute {
+            try {
+                val dim = dimension ?: "minecraft:overworld"
+                val level = adapter.getLevel(dim)
+                if (level == null) {
+                    future.completeExceptionally(IllegalArgumentException("Unknown dimension: $dim"))
+                    return@execute
+                }
+
+                val context = graalContext ?: run {
+                    future.completeExceptionally(IllegalStateException("GraalVM context not available"))
+                    return@execute
+                }
+
+                // Get dimension height bounds
+                val minY = level.minBuildHeight
+                val maxY = level.maxBuildHeight
+
+                // Create result object
+                val result = context.eval("js", """
+                    ({
+                        minY: ${minY},
+                        maxY: ${maxY},
+                        minBuildHeight: ${minY},
+                        maxBuildHeight: ${maxY}
+                    })
+                """.trimIndent())
+
+                future.complete(result)
+            } catch (e: Exception) {
+                future.completeExceptionally(e)
+            }
+        }
+
+        return future
+    }
+
+    /**
+     * Get vertical bounds of non-air blocks in a horizontal region (async).
+     * Scans the region to find min/max Y with blocks.
+     * Returns Promise<FilledBounds | null> - null if entire region is empty.
+     */
+    fun getFilledBounds(pos1: Value, pos2: Value, dimension: String?): CompletableFuture<Value?> {
+        val future = CompletableFuture<Value?>()
+        val srv = server ?: run {
+            future.completeExceptionally(IllegalStateException("Server not available"))
+            return future
+        }
+        val adapter = worldAdapter ?: run {
+            future.completeExceptionally(IllegalStateException("WorldAdapter not initialized"))
+            return future
+        }
+
+        try {
+            // Extract positions (only x/z matter, y is ignored)
+            val x1 = pos1.getMember("x").asInt()
+            val z1 = pos1.getMember("z").asInt()
+            val x2 = pos2.getMember("x").asInt()
+            val z2 = pos2.getMember("z").asInt()
+
+            val dim = dimension ?: if (pos1.hasMember("dimension")) {
+                pos1.getMember("dimension").asString()
+            } else {
+                "minecraft:overworld"
+            }
+
+            srv.execute {
+                try {
+                    val level = adapter.getLevel(dim)
+                    if (level == null) {
+                        future.completeExceptionally(IllegalArgumentException("Unknown dimension: $dim"))
+                        return@execute
+                    }
+
+                    val context = graalContext ?: run {
+                        future.completeExceptionally(IllegalStateException("GraalVM context not available"))
+                        return@execute
+                    }
+
+                    // Determine scan bounds
+                    val minX = minOf(x1, x2)
+                    val maxX = maxOf(x1, x2)
+                    val minZ = minOf(z1, z2)
+                    val maxZ = maxOf(z1, z2)
+
+                    var foundMinY: Int? = null
+                    var foundMaxY: Int? = null
+
+                    // Scan columns to find min/max Y with blocks
+                    for (x in minX..maxX) {
+                        for (z in minZ..maxZ) {
+                            val pos = net.minecraft.core.BlockPos(x, 0, z)
+
+                            // Scan from bottom to top to find first non-air block
+                            for (y in level.minBuildHeight until level.maxBuildHeight) {
+                                val blockPos = net.minecraft.core.BlockPos(x, y, z)
+                                val blockState = level.getBlockState(blockPos)
+                                if (!blockState.isAir) {
+                                    if (foundMinY == null || y < foundMinY) {
+                                        foundMinY = y
+                                    }
+                                    if (foundMaxY == null || y > foundMaxY) {
+                                        foundMaxY = y
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Return null if no blocks found
+                    if (foundMinY == null || foundMaxY == null) {
+                        future.complete(null)
+                        return@execute
+                    }
+
+                    // Create result object
+                    val result = context.eval("js", """
+                        ({
+                            minY: ${foundMinY},
+                            maxY: ${foundMaxY}
+                        })
+                    """.trimIndent())
+
+                    future.complete(result)
+                } catch (e: Exception) {
+                    future.completeExceptionally(e)
+                }
+            }
+        } catch (e: Exception) {
+            future.completeExceptionally(e)
+        }
+
+        return future
+    }
+
+    /**
+     * Remove all entities in a region (without killing/dropping items).
+     * Removes entities directly so no drops occur.
+     */
+    fun removeEntities(pos1: Value, pos2: Value, options: Value?): CompletableFuture<Int> {
+        val future = CompletableFuture<Int>()
+        val srv = server ?: run {
+            future.completeExceptionally(IllegalStateException("Server not available"))
+            return future
+        }
+        val adapter = worldAdapter ?: run {
+            future.completeExceptionally(IllegalStateException("WorldAdapter not initialized"))
+            return future
+        }
+
+        try {
+            // Extract positions
+            val x1 = pos1.getMember("x").asInt()
+            val y1 = pos1.getMember("y").asInt()
+            val z1 = pos1.getMember("z").asInt()
+            val x2 = pos2.getMember("x").asInt()
+            val y2 = pos2.getMember("y").asInt()
+            val z2 = pos2.getMember("z").asInt()
+
+            ConfigManager.debug("[WorldManager] removeEntities positions: ($x1,$y1,$z1) to ($x2,$y2,$z2)")
+
+            // Get dimension
+            val dim = if (options != null && options.hasMember("dimension")) {
+                options.getMember("dimension").asString()
+            } else if (pos1.hasMember("dimension")) {
+                pos1.getMember("dimension").asString()
+            } else {
+                "minecraft:overworld"
+            }
+
+            ConfigManager.debug("[WorldManager] removeEntities dimension: $dim")
+
+            // Parse options
+            val excludePlayers = if (options != null && options.hasMember("excludePlayers")) {
+                options.getMember("excludePlayers").asBoolean()
+            } else {
+                true  // Default: exclude players
+            }
+
+            val typeFilter: Set<String>? = if (options != null && options.hasMember("types")) {
+                val typesArray = options.getMember("types")
+                if (typesArray.hasArrayElements()) {
+                    val types = mutableSetOf<String>()
+                    val size = typesArray.arraySize
+                    for (i in 0 until size) {
+                        types.add(typesArray.getArrayElement(i).asString())
+                    }
+                    types
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+
+            srv.execute {
+                try {
+                    val level = adapter.getLevel(dim)
+                    if (level == null) {
+                        ConfigManager.debug("[WorldManager] ERROR: Level is null for dimension $dim")
+                        future.completeExceptionally(IllegalArgumentException("Unknown dimension: $dim"))
+                        return@execute
+                    }
+
+                    ConfigManager.debug("[WorldManager] Got level for dimension: ${level.dimension().location()}")
+
+                    // Create bounding box
+                    val minX = minOf(x1, x2).toDouble()
+                    val minY = minOf(y1, y2).toDouble()
+                    val minZ = minOf(z1, z2).toDouble()
+                    val maxX = maxOf(x1, x2).toDouble()
+                    val maxY = maxOf(y1, y2).toDouble()
+                    val maxZ = maxOf(z1, z2).toDouble()
+
+                    val aabb = net.minecraft.world.phys.AABB(minX, minY, minZ, maxX, maxY, maxZ)
+
+                    // Calculate chunk bounds
+                    val minChunkX = (minX.toInt() shr 4)
+                    val maxChunkX = (maxX.toInt() shr 4)
+                    val minChunkZ = (minZ.toInt() shr 4)
+                    val maxChunkZ = (maxZ.toInt() shr 4)
+
+                    val chunkCount = (maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1)
+                    ConfigManager.debug("[WorldManager] Force-loading $chunkCount chunks ($minChunkX,$minChunkZ to $maxChunkX,$maxChunkZ) for entity removal")
+
+                    // Force-load all chunks
+                    for (chunkX in minChunkX..maxChunkX) {
+                        for (chunkZ in minChunkZ..maxChunkZ) {
+                            // Force chunk to be fully loaded with entities
+                            level.getChunk(chunkX, chunkZ, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true)
+                        }
+                    }
+
+                    // Get all entities from all loaded entities in the level (not using AABB filter)
+                    val allLevelEntities = level.allEntities
+                    ConfigManager.debug("[WorldManager] Total entities in level: ${allLevelEntities.count()}")
+
+                    // Filter to only entities in our bounding box
+                    val entitiesInRegion = allLevelEntities.filter { entity ->
+                        val pos = entity.position()
+                        pos.x >= minX && pos.x <= maxX &&
+                        pos.y >= minY && pos.y <= maxY &&
+                        pos.z >= minZ && pos.z <= maxZ
+                    }
+
+                    ConfigManager.debug("[WorldManager] Found ${entitiesInRegion.size} entities in region")
+                    ConfigManager.debug("[WorldManager] excludePlayers=$excludePlayers, typeFilter=$typeFilter")
+
+                    val entities = entitiesInRegion
+
+                    var removedCount = 0
+                    entities.forEach { entity ->
+                        val entityType = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.type).toString()
+                        val isPlayer = entity is net.minecraft.world.entity.player.Player
+
+                        // Check exclusions
+                        val shouldRemove = when {
+                            excludePlayers && isPlayer -> {
+                                ConfigManager.debug("[WorldManager] Skipping player: ${entity.name.string}")
+                                false
+                            }
+                            typeFilter != null -> {
+                                val inFilter = entityType in typeFilter
+                                ConfigManager.debug("[WorldManager] Entity $entityType, in filter: $inFilter")
+                                inFilter
+                            }
+                            else -> {
+                                ConfigManager.debug("[WorldManager] Removing entity: $entityType at ${entity.position()}")
+                                true
+                            }
+                        }
+
+                        if (shouldRemove) {
+                            ConfigManager.debug("[WorldManager] Calling discard() on $entityType")
+                            entity.discard()  // Remove without drops
+                            removedCount++
+                        }
+                    }
+
+                    ConfigManager.debug("[WorldManager] Removed $removedCount entities total")
+                    future.complete(removedCount)
+                } catch (e: Exception) {
+                    future.completeExceptionally(e)
+                }
+            }
+        } catch (e: Exception) {
+            future.completeExceptionally(e)
+        }
+
+        return future
     }
 
     /**
