@@ -56,13 +56,47 @@ cmd.subcommand('place')
     }
 
     name = sign.front?.combine().replace(/\s/g, '');
-    await platform.placeVillage(name, {});
+    await platform.placeVillage(name, { seed: 10, simulateBearding: 'minecraft:redstone_block' });
     console.log('last placement', platform.lastPlacement)
 
     caller.sendMessage(`Placed ${name} at ${posToString(platform.center)}`);
     return 1;
   });
 
+cmd.subcommand('starter')
+  .argument('pos', 'xz-position')
+  .argument('depth', "int", 1)
+  .argument('seed', 'int', 10)
+  .argument('rotation', 'int', 0)
+  .argument('surface', 'string', 'scan')
+  .suggestions('rotation', () => ['0', '90', '180', '-90'])
+  .suggestions('surface', () => ['heightmap', 'scan'])
+  .executes(async ({caller, args}) => {
+    try {
+      const result = await platform.placeStarter({
+        pool: "minecraft:village/plains/streets",
+        target: "minecraft:street",
+        depth: args.depth,
+        ...args.pos,
+        surface: args.surface,
+        dimension: caller.isPlayer ? caller.position.dimension : caller.dimension,
+      });
+
+      if (!result.success) {
+        caller.sendError(`placeStarter failed: ${result.error ?? "unknown error"}`);
+        return 0;
+      } else {
+        caller.sendSuccess(
+          `Placed from ${result.pool} at (${result.position?.x}, ${result.position?.z}) with maxDepth=${result.maxDepth}`
+        );
+        return 1;
+      }
+    } catch (error) {
+      caller.sendError(`Command failed: ${error.message}`);
+      console.error('starter command error:', error);
+      return 0;
+    }
+  })
 
 
 function posToString (pos) {

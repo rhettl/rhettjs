@@ -125,14 +125,77 @@ object WorldgenStructurePlacementContext {
          */
         private fun getOrScanHeight(x: Int, z: Int): Int {
             val key = packXZ(x, z)
-            return heightCache.computeIfAbsent(key) {
-                scanSurfaceHeight(x, z)
+            val existingValue = heightCache[key]
+
+            if (existingValue != null) {
+                // Cache hit
+                return existingValue
+            }
+
+            // Cache miss - need to scan
+            // scanSurfaceHeight returns the Y of the surface block itself
+            // Add +1 to follow heightmap convention (first air above surface)
+            val surfaceBlockY = scanSurfaceHeight(x, z)
+            val heightValue = surfaceBlockY + 1
+
+            heightCache[key] = heightValue
+            return heightValue
+        }
+
+        /**
+         * Check if a block should be skipped when scanning for surface.
+         * Returns true if the block should be ignored (air, vegetation, etc.)
+         */
+        private fun shouldSkipBlock(state: net.minecraft.world.level.block.state.BlockState): Boolean {
+            val block = state.block
+
+            // Skip air
+            if (state.isAir) return true
+
+            // Skip vegetation and plant-like blocks
+            // Check by tags and properties
+            if (state.`is`(net.minecraft.tags.BlockTags.LEAVES)) return true
+            if (state.`is`(net.minecraft.tags.BlockTags.FLOWERS)) return true
+            if (state.`is`(net.minecraft.tags.BlockTags.CROPS)) return true
+            if (state.`is`(net.minecraft.tags.BlockTags.SAPLINGS)) return true
+
+            // Check material/block type
+            val material = block.javaClass.simpleName.lowercase()
+            when {
+                // Grass, ferns, dead bushes
+                block is net.minecraft.world.level.block.TallGrassBlock -> return true
+                block is net.minecraft.world.level.block.DoublePlantBlock -> return true
+                block is net.minecraft.world.level.block.DeadBushBlock -> return true
+                block is net.minecraft.world.level.block.FlowerBlock -> return true
+                block is net.minecraft.world.level.block.SaplingBlock -> return true
+
+                // Logs and wood (placed or natural)
+                material.contains("log") -> return true
+                material.contains("wood") -> return true
+
+                // Vines, moss, etc
+                block is net.minecraft.world.level.block.VineBlock -> return true
+
+                else -> {
+                    // Accept water sources (but not flowing water)
+                    if (block is net.minecraft.world.level.block.LiquidBlock) {
+                        // Check if it's a source block (not flowing)
+                        val fluidState = state.fluidState
+                        return !fluidState.isSource // Skip flowing, keep sources
+                    }
+
+                    // Accept all other blocks (solid terrain)
+                    return false
+                }
             }
         }
 
         /**
          * Scan a column to find the surface height.
-         * Uses motion-blocking logic similar to vanilla's WORLD_SURFACE heightmap.
+         * Custom logic that skips vegetation, logs, and non-source liquids.
+         * Accepts water sources as surface.
+         *
+         * @return The Y coordinate of the surface block itself (NOT +1)
          */
         private fun scanSurfaceHeight(x: Int, z: Int): Int {
             val pos = BlockPos.MutableBlockPos(x, level.maxBuildHeight, z)
@@ -142,10 +205,13 @@ object WorldgenStructurePlacementContext {
                 pos.setY(y)
                 val state = level.getBlockState(pos)
 
-                // Use same logic as WORLD_SURFACE heightmap: motion blocking
-                if (Heightmap.Types.WORLD_SURFACE.isOpaque().test(state)) {
-                    return y + 1 // Return one above the solid block
+                // Skip air, vegetation, logs, etc.
+                if (shouldSkipBlock(state)) {
+                    continue
                 }
+
+                // Found a valid surface block (solid or water source)
+                return y
             }
 
             // No solid block found, return min build height

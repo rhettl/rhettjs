@@ -1,5 +1,6 @@
 import Commands from "rhettjs/commands";
 import { StructureNbt as Structure } from "rhettjs/structure";
+import Store from 'rhettjs/store'
 
 
 const cmd = Commands.register('structure')
@@ -9,15 +10,53 @@ cmd.subcommand('save')
   .argument('name', 'string')
   .argument('size', 'int', 48)
   .executes(async ({caller, args}) => {
-    const playerName = caller.name;
-    const pos = [
-      getPosition(playerName, 1),
-      getPosition(playerName, 2),
-    ];
+    console.log('[structure save] Command invoked:', { player: caller.name, name: args.name, size: args.size });
 
-    await Structure.capture(pos[0], pos[1], args.name, {
-      pieceSize: { x: args.size, y: args.size, z: args.size },
-    });
+    const playerName = caller.name;
+
+    let pos;
+    try {
+      pos = [
+        await getPosition(playerName, 1),
+        await getPosition(playerName, 2),
+      ];
+      console.log('[structure save] Positions retrieved:', { pos1: pos[0], pos2: pos[1] });
+    } catch (err) {
+      console.error('[structure save] Error getting positions:', err);
+      caller.sendError(`Failed to retrieve positions: ${err.message}`);
+      return 0;
+    }
+
+    // Validate positions
+    if (!pos[0]) {
+      const msg = `Position 1 not set. Please set position 1 first.`;
+      console.error('[structure save]', msg);
+      caller.sendError(msg);
+      return 0;
+    }
+    if (!pos[1]) {
+      const msg = `Position 2 not set. Please set position 2 first.`;
+      console.error('[structure save]', msg);
+      caller.sendError(msg);
+      return 0;
+    }
+
+    console.log('[structure save] Starting capture...');
+
+    try {
+      await Structure.capture(pos[0], pos[1], args.name, {
+        pieceSize: {x: args.size, y: args.size, z: args.size},
+      });
+
+      console.log('[structure save] Capture successful');
+      caller.sendSuccess(`Structure '${args.name}' captured successfully`)
+      return 1;
+    } catch (err) {
+      console.error('[structure save] Capture failed:', err);
+      console.error('[structure save] Error stack:', err.stack);
+      caller.sendError(`Failed to capture structure: ${err.message || err}`);
+      return 0;
+    }
 
   });
 
@@ -71,7 +110,7 @@ async function doPlace ({caller, args, centered} = {}) {
   const name = args.name.includes(':') ? args.name : 'minecraft:'+args.name;
   const namespace = name.split(':')[0];
   const timer = new Performance();
-  const pos1 = getPosition(caller.name, 1);
+  const pos1 = await getPosition(caller.name, 1);
   if (!pos1) {
     caller.sendMessage(`No position 1 available; please set`);
     return 0;

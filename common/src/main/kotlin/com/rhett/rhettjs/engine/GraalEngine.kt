@@ -1260,10 +1260,13 @@ object GraalEngine {
                 val rotation = if (options.hasMember("rotation") && !options.getMember("rotation").isNull) {
                     options.getMember("rotation").asString()
                 } else null
+                val simulateBearding = if (options.hasMember("simulateBearding") && !options.getMember("simulateBearding").isNull) {
+                    options.getMember("simulateBearding").asString()
+                } else null
 
                 convertFutureToPromise<Map<String, Any?>>(
                     context,
-                    com.rhett.rhettjs.structure.WorldgenStructureManager.place(name, x, z, dimension, seed, surface, rotation)
+                    com.rhett.rhettjs.structure.WorldgenStructureManager.place(name, x, z, dimension, seed, surface, rotation, simulateBearding)
                 )
             },
             "placeJigsaw" to ProxyExecutable { args ->
@@ -1300,10 +1303,13 @@ object GraalEngine {
                 val surface = if (options.hasMember("surface") && !options.getMember("surface").isNull) {
                     options.getMember("surface").asString()
                 } else null
+                val simulateBearding = if (options.hasMember("simulateBearding") && !options.getMember("simulateBearding").isNull) {
+                    options.getMember("simulateBearding").asString()
+                } else null
 
                 convertFutureToPromise<Map<String, Any?>>(
                     context,
-                    com.rhett.rhettjs.structure.WorldgenStructureManager.placeJigsaw(pool, target, maxDepth, x, z, dimension, seed, surface)
+                    com.rhett.rhettjs.structure.WorldgenStructureManager.placeJigsaw(pool, target, maxDepth, x, z, dimension, seed, surface, simulateBearding)
                 )
             }
         ))

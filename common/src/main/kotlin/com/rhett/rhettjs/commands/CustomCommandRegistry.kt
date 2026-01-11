@@ -843,7 +843,7 @@ class CustomCommandRegistry {
             }
             "entity" -> EntityArgument.entity()
             "xyz-position" -> net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos()
-            "xz-position" -> net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos()  // Will only use x/z
+            "xz-position" -> net.minecraft.commands.arguments.coordinates.ColumnPosArgument.columnPos()
             else -> throw IllegalArgumentException("Unknown argument type: $type")
         }
     }
@@ -983,7 +983,7 @@ class CustomCommandRegistry {
                         graalContext.asValue(parsed)
                     }
                     "xz-position" -> {
-                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val coordinates = net.minecraft.commands.arguments.coordinates.ColumnPosArgument.getColumnPos(brigadierContext, name)
                         val parsed = mapOf(
                             "x" to coordinates.x,
                             "z" to coordinates.z
@@ -1072,7 +1072,7 @@ class CustomCommandRegistry {
                         graalContext.asValue(parsed)
                     }
                     "xz-position" -> {
-                        val coordinates = net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(brigadierContext, name)
+                        val coordinates = net.minecraft.commands.arguments.coordinates.ColumnPosArgument.getColumnPos(brigadierContext, name)
                         val parsed: Map<String, Int> = mapOf(
                             "x" to coordinates.x,
                             "z" to coordinates.z

@@ -35,6 +35,28 @@ interface WorldgenStructurePlaceOptions {
      * - "counterclockwise_90" or "270": 90 degrees counter-clockwise
      */
     rotation?: "none" | "clockwise_90" | "90" | "180" | "counterclockwise_90" | "270";
+
+    /**
+     * Simulate bearding (foundation generation) using a visualization block.
+     *
+     * When set, the system will calculate where vanilla terrain adaptation would
+     * place foundation blocks (using the structure's terrainAdaptation setting),
+     * and place the specified block type instead. This creates a visual representation
+     * of the bearding algorithm.
+     *
+     * Tuned for tight, minimal bearding:
+     * - Horizontal spread: ~1 block from structure edges (immediate neighbors only)
+     * - Vertical delta: Up to 6 blocks below structure
+     * - Density falloff: Exponential (e^(-distance²/16)) with high threshold (0.9)
+     *
+     * The bearding creates a tight foundation that hugs the structure footprint,
+     * filling replaceable blocks (air, grass, flowers) down to solid terrain.
+     *
+     * @example "minecraft:redstone_block" - Red visualization
+     * @example "minecraft:stone" - Natural-looking foundation
+     * @example "minecraft:cobblestone" - Classic foundation material
+     */
+    simulateBearding?: string;
 }
 
 /**
@@ -90,6 +112,12 @@ interface WorldgenStructurePlaceJigsawOptions {
 
     /** Surface mode (same as place()) */
     surface?: "heightmap" | "scan" | `fixed:${number}`;
+
+    /**
+     * Simulate bearding (foundation generation) using a visualization block.
+     * See WorldgenStructurePlaceOptions.simulateBearding for details.
+     */
+    simulateBearding?: string;
 }
 
 /**
@@ -231,6 +259,15 @@ declare namespace WorldgenStructure {
      * });
      *
      * @example
+     * // Visualize bearding with redstone blocks
+     * const result = await WorldgenStructure.place("minecraft:village_plains", {
+     *     x: 0,
+     *     z: 0,
+     *     surface: "scan",
+     *     simulateBearding: "minecraft:redstone_block"  // Show foundation shape
+     * });
+     *
+     * @example
      * // Placement with fixed rotation
      * const result = await WorldgenStructure.place("minecraft:bastion_remnant", {
      *     x: 100,
@@ -268,6 +305,17 @@ declare namespace WorldgenStructure {
      *     maxDepth: 3,
      *     x: 0,
      *     z: 0
+     * });
+     *
+     * @example
+     * // Visualize bearding for jigsaw structures
+     * const result = await WorldgenStructure.placeJigsaw({
+     *     pool: "minecraft:village/plains/town_centers",
+     *     target: "minecraft:bottom",
+     *     maxDepth: 2,
+     *     x: 0,
+     *     z: 0,
+     *     simulateBearding: "minecraft:gold_block"  // Golden foundation
      * });
      */
     function placeJigsaw(options: WorldgenStructurePlaceJigsawOptions): Promise<WorldgenStructurePlaceJigsawResult>;

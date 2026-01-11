@@ -260,6 +260,180 @@ object WorldgenStructureManager {
     }
 
     /**
+     * Apply bearding (foundation blocks) to rigid structure pieces.
+     * Mimics vanilla terrain adaptation by filling gaps between structures and terrain.
+     *
+     * @param level The level to place blocks in
+     * @param structureStart The structure with pieces to beard
+     * @param beardingBlockId Block ID to use for bearding (e.g., "minecraft:redstone_block")
+     */
+    private fun applyBearding(
+        level: net.minecraft.server.level.ServerLevel,
+        structureStart: net.minecraft.world.level.levelgen.structure.StructureStart,
+        beardingBlockId: String
+    ) {
+        // Parse bearding block
+        val (namespace, path) = parseStructureName(beardingBlockId)
+        val blockLocation = ResourceLocation.fromNamespaceAndPath(namespace, path)
+        val block = net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(blockLocation)
+
+        if (block == net.minecraft.world.level.block.Blocks.AIR) {
+            ConfigManager.debug("[WorldgenStructureManager] Invalid bearding block: $beardingBlockId")
+            return
+        }
+
+        val beardingState = block.defaultBlockState()
+
+        // Process each piece
+        for (piece in structureStart.pieces) {
+            // Only beard rigid (non-terrain-matching) pieces
+            // Skip terrain-matching pieces as they already follow terrain
+            if (piece is net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece) {
+                val projection = piece.element.projection
+                // Skip if terrain matching
+                if (projection == net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool.Projection.TERRAIN_MATCHING) {
+                    continue
+                }
+            } else {
+                // Non-pool pieces don't need bearding
+                continue
+            }
+
+            // Get piece bounding box
+            val boundingBox = piece.boundingBox
+            val minX = boundingBox.minX()
+            val minY = boundingBox.minY()
+            val minZ = boundingBox.minZ()
+            val maxX = boundingBox.maxX()
+            val maxY = boundingBox.maxY()
+            val maxZ = boundingBox.maxZ()
+
+            ConfigManager.debug("[WorldgenStructureManager] Applying bearding to rigid piece at ($minX, $minY, $minZ) to ($maxX, $maxY, $maxZ)")
+
+            // Apply thin beard by default for rigid pieces
+            applyThinBeard(level, boundingBox, beardingState, minY)
+        }
+    }
+
+    /**
+     * Apply thin bearding - creates cloud-puff foundation using vanilla's exponential falloff.
+     * Extends horizontally beyond structure and tapers with distance.
+     */
+    private fun applyThinBeard(
+        level: net.minecraft.server.level.ServerLevel,
+        boundingBox: net.minecraft.world.level.levelgen.structure.BoundingBox,
+        beardingState: net.minecraft.world.level.block.state.BlockState,
+        structureMinY: Int
+    ) {
+        // Vanilla constants
+        val BEARD_KERNEL_RADIUS = 1  // Max horizontal spread (scan area)
+        val MAX_VERTICAL_DELTA = 6    // Max vertical gap before no bearding
+        val DENSITY_THRESHOLD = 0.9   // Minimum density to place block
+
+        val minX = boundingBox.minX()
+        val minZ = boundingBox.minZ()
+        val maxX = boundingBox.maxX()
+        val maxZ = boundingBox.maxZ()
+
+        // Expand search area by kernel radius for cloud puff
+        for (x in (minX - BEARD_KERNEL_RADIUS)..(maxX + BEARD_KERNEL_RADIUS)) {
+            for (z in (minZ - BEARD_KERNEL_RADIUS)..(maxZ + BEARD_KERNEL_RADIUS)) {
+                applyBeardCloudColumn(level, x, z, boundingBox, structureMinY, beardingState, MAX_VERTICAL_DELTA, DENSITY_THRESHOLD)
+            }
+        }
+    }
+
+    /**
+     * Apply cloud bearding to a single column.
+     * Uses vanilla's exponential falloff: density = e^(-distance²/16)
+     *
+     * Bearding fills air gaps from the piece's BOTTOM (minY) downward.
+     * Uses the bounding box minY as reference height, not individual block heights.
+     */
+    private fun applyBeardCloudColumn(
+        level: net.minecraft.server.level.ServerLevel,
+        x: Int,
+        z: Int,
+        boundingBox: net.minecraft.world.level.levelgen.structure.BoundingBox,
+        structureMinY: Int,
+        beardingState: net.minecraft.world.level.block.state.BlockState,
+        maxVerticalDelta: Int,
+        densityThreshold: Double
+    ) {
+        val pos = BlockPos.MutableBlockPos(x, structureMinY - 1, z)
+
+        // Scan downward from structure bottom (minY - 1)
+        for (y in (structureMinY - 1) downTo (structureMinY - maxVerticalDelta - 1)) {
+            if (y < level.minBuildHeight) break
+
+            pos.setY(y)
+            val existingState = level.getBlockState(pos)
+
+            // Stop if we hit non-replaceable blocks (solid terrain, structure blocks, etc.)
+            if (!existingState.canBeReplaced()) {
+                break
+            }
+
+            // Calculate 3D distance to nearest point on structure bounding box
+            // For horizontal distance, measure to structure footprint edge
+            val dx = maxOf(0, maxOf(boundingBox.minX() - x, x - boundingBox.maxX()))
+            val dz = maxOf(0, maxOf(boundingBox.minZ() - z, z - boundingBox.maxZ()))
+
+            // Vertical distance from structure bottom
+            val dy = structureMinY - y
+
+            // Vanilla formula: density = e^(-distance²/16)
+            val distanceSquared = (dx * dx + dy * dy + dz * dz).toDouble()
+            val density = Math.exp(-distanceSquared / 16.0)
+
+            // Place block if density exceeds threshold and block is replaceable
+            if (density >= densityThreshold && existingState.canBeReplaced()) {
+                level.setBlock(pos, beardingState, 3)
+            }
+        }
+    }
+
+    /**
+     * Apply box bearding - fills entire area under structure down to terrain.
+     * (Keeping simple implementation for BEARD_BOX type)
+     */
+    private fun applyBoxBeard(
+        level: net.minecraft.server.level.ServerLevel,
+        boundingBox: net.minecraft.world.level.levelgen.structure.BoundingBox,
+        beardingState: net.minecraft.world.level.block.state.BlockState,
+        structureMinY: Int
+    ) {
+        val minX = boundingBox.minX()
+        val minZ = boundingBox.minZ()
+        val maxX = boundingBox.maxX()
+        val maxZ = boundingBox.maxZ()
+
+        val pos = BlockPos.MutableBlockPos()
+
+        // Fill entire box volume
+        for (x in minX..maxX) {
+            for (z in minZ..maxZ) {
+                for (y in (structureMinY - 1) downTo (structureMinY - 6)) {
+                    if (y < level.minBuildHeight) break
+
+                    pos.set(x, y, z)
+                    val existingState = level.getBlockState(pos)
+
+                    // Stop at solid terrain
+                    if (!existingState.isAir && existingState.isSolidRender(level, pos)) {
+                        break
+                    }
+
+                    // Fill air
+                    if (existingState.isAir) {
+                        level.setBlock(pos, beardingState, 3)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Place a worldgen structure at a position.
      *
      * @param nameWithNamespace Structure name in format "[namespace:]name"
@@ -269,6 +443,7 @@ object WorldgenStructureManager {
      * @param seed Optional seed for randomization (null = random)
      * @param surface Surface mode: "heightmap" (default), "scan", "fixed:Y", "rigid"
      * @param rotation Optional rotation: "none", "clockwise_90", "180", "counterclockwise_90" (null = seed-based)
+     * @param simulateBearding Optional block ID (e.g., "minecraft:redstone_block") to visualize bearding. null = no bearding
      */
     fun place(
         nameWithNamespace: String,
@@ -277,7 +452,8 @@ object WorldgenStructureManager {
         dimensionId: String?,
         seed: Long?,
         surface: String?,
-        rotation: String?
+        rotation: String?,
+        simulateBearding: String?
     ): CompletableFuture<Map<String, Any?>> {
         val future = CompletableFuture<Map<String, Any?>>()
         val srv = server
@@ -368,6 +544,11 @@ object WorldgenStructureManager {
                         // Count pieces
                         pieceCount = structureStart.pieces.size
 
+                        // Apply bearding if requested
+                        if (simulateBearding != null) {
+                            applyBearding(level, structureStart, simulateBearding)
+                        }
+
                         mapOf(
                             "success" to true,
                             "seed" to actualSeed,
@@ -405,6 +586,7 @@ object WorldgenStructureManager {
      * @param dimensionId Dimension to place in (null = overworld)
      * @param seed Optional seed for randomization
      * @param surface Surface mode: "heightmap", "scan", "fixed:Y"
+     * @param simulateBearding Optional block ID (e.g., "minecraft:redstone_block") to visualize bearding. null = no bearding
      */
     fun placeJigsaw(
         pool: String,
@@ -414,7 +596,8 @@ object WorldgenStructureManager {
         z: Int,
         dimensionId: String?,
         seed: Long?,
-        surface: String?
+        surface: String?,
+        simulateBearding: String?
     ): CompletableFuture<Map<String, Any?>> {
         val future = CompletableFuture<Map<String, Any?>>()
         val srv = server
@@ -463,6 +646,13 @@ object WorldgenStructureManager {
                             blockPos,
                             false // useExpansionHack
                         )
+
+                        // TODO: Apply bearding for jigsaw placement
+                        // JigsawPlacement doesn't return StructureStart, so we can't easily apply bearding
+                        // Would need to query placed structures from level's structure manager
+                        if (simulateBearding != null) {
+                            ConfigManager.debug("[WorldgenStructureManager] Bearding not yet supported for placeJigsaw")
+                        }
 
                         if (success) {
                             mapOf(

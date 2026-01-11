@@ -72,6 +72,43 @@ export const platform = {
     return this;
   },
 
+  // place a single jigsaw starter with limited depth
+  async placeStarter (
+    {
+      pool,
+      target = "minecraft:bottom",
+      depth = 1,          // 0, 1, or 2
+      x = 0,
+      z = 0,
+      dimension = "overworld",
+      seed,
+      surface = "heightmap" // "heightmap" | "scan" | `fixed:${number}`
+    }
+  ) {
+    const maxDepth = Math.max(1, Math.min(depth, 2)); // clamp to 0–2 for rapid tests
+
+    const result = await WorldgenStructure.placeJigsaw({
+      pool,
+      target,
+      maxDepth,
+      x,
+      z,
+      dimension,
+      seed,
+      surface
+    });
+
+    if (!result.success) {
+      console.error(`placeStarter failed: ${result.error ?? "unknown error"}`);
+    } else {
+      console.log(
+        `Placed from ${result.pool} at (${result.position?.x}, ${result.position?.z}) with maxDepth=${result.maxDepth}`
+      );
+    }
+
+    return result;
+  },
+
   async placePlatform (name, options = {}) {
     this.lastPlatformPlacement = null;
     name = name.includes(':') ? name : `minecraft:${name}`;
@@ -117,8 +154,8 @@ export const platform = {
     }
 
     await World.fill(
-      { ...pos1, y: bounds.minY },
-      { ...pos2, y: bounds.maxY },
+      {...pos1, y: bounds.minY},
+      {...pos2, y: bounds.maxY},
       "minecraft:air",
       {
         exclude: [
@@ -128,9 +165,9 @@ export const platform = {
       }
     );
     await World.removeEntities(
-      { ...pos1, y: bounds.minY },
-      { ...pos2, y: bounds.maxY+8 },
-      { excludePlayers: true }
+      {...pos1, y: bounds.minY},
+      {...pos2, y: bounds.maxY + 8},
+      {excludePlayers: true}
     );
 
     return this;
