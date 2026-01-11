@@ -21,31 +21,23 @@ cmd.subcommand('wand')
   });
 
 cmd.subcommand('pos1')
-  .argument('x', "int")
-  .argument('y', "int")
-  .argument('z', "int")
+  .argument('pos', 'xyz-position')
   .executes(({caller, args}) => {
     setPosition(caller.name, 1, {
-      x: args.x,
-      y: args.y,
-      z: args.z,
-      dimension: caller.dimension || "minecraft:overworld"
+      ...args.pos,
+      dimension: caller.isPlayer ? caller.position.dimension : caller.dimension
     });
-    caller.sendMessage(`§aPos1 set at ${args.x}, ${args.y}, ${args.z}`);
+    caller.sendMessage(`§aPos1 set at ${args.pos.x}, ${args.pos.y}, ${args.pos.z}`);
   });
 
 cmd.subcommand('pos2')
-  .argument('x', "int")
-  .argument('y', "int")
-  .argument('z', "int")
+  .argument('pos', 'xyz-position')
   .executes(({caller, args}) => {
     setPosition(caller.name, 2, {
-      x: args.x,
-      y: args.y,
-      z: args.z,
-      dimension: caller.dimension || "minecraft:overworld"
+      ...args.pos,
+      dimension: caller.isPlayer ? caller.position.dimension : caller.dimension
     });
-    caller.sendMessage(`§aPos2 set at ${args.x}, ${args.y}, ${args.z}`);
+    caller.sendMessage(`§aPos2 set at ${args.pos.x}, ${args.pos.y}, ${args.pos.z}`);
   });
 
 cmd.subcommand('check-positions')
