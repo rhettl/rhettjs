@@ -71,7 +71,8 @@ export interface StructureData {
             name: string;
             properties: Record<string, string>;
         };
-        blockEntityData?: any;
+        /** Block entity NBT data (chest contents, sign text, etc.) - always a pure JS object */
+        blockEntityData?: Record<string, any>;
     }>;
     /** List of entities in the structure */
     entities: StructureEntity[];
