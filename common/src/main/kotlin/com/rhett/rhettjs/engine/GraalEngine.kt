@@ -24,7 +24,7 @@ class ScriptExitException : RuntimeException("Script terminated via Runtime.exit
  * ## IMPORTANT NOTES FOR FUTURE DEVELOPERS:
  *
  * ### Where to Add New Code:
- * - **New JavaScript API proxies** → Add in `engine/api/*APIProxy.kt` files, NOT here
+ * - **New JavaScript API proxies** → Add in `engine/api/` directory (e.g., MyAPIProxy.kt), NOT here
  *   - Each API should be in its own file (e.g., WorldAPIProxy.kt, StoreAPIProxy.kt)
  *   - Follow the pattern: object with a `create()` method that returns ProxyObject
  *   - Add the API to `injectBuiltinModules()` below
@@ -375,3 +375,4 @@ object GraalEngine {
         return "$message$location"
     }
 }
+

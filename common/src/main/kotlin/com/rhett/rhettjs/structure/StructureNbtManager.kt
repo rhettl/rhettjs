@@ -828,7 +828,9 @@ object StructureNbtManager {
                                 // Get block entity data if present
                                 val blockEntity = level.getBlockEntity(blockPos)
                                 val blockEntityData = if (blockEntity != null) {
-                                    blockEntity.saveWithoutMetadata(level.registryAccess())
+                                    val nbtTag = blockEntity.saveWithoutMetadata(level.registryAccess())
+                                    @Suppress("UNCHECKED_CAST")
+                                    convertNbtTagToMap(nbtTag) as? Map<String, Any>
                                 } else {
                                     null
                                 }
