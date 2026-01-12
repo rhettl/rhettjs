@@ -51,13 +51,14 @@ data class BlockData(
 
 /**
  * Block with its world position.
+ * blockEntityData is always pure Map - no Minecraft types (anti-corruption layer).
  */
 data class PositionedBlock(
     val x: Int,
     val y: Int,
     val z: Int,
     val block: BlockData,
-    val blockEntityData: Any? = null  // Can be Map<String, Any> or net.minecraft.nbt.CompoundTag for structures
+    val blockEntityData: Map<String, Any>? = null
 )
 
 /**

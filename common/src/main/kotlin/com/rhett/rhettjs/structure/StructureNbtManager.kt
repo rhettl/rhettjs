@@ -481,13 +481,21 @@ object StructureNbtManager {
 
             val blockData = palette.getOrNull(state)
             if (blockData != null) {
+                // Convert block entity NBT to Map (anti-corruption layer)
+                val blockEntityData = if (blockNBT.contains("nbt")) {
+                    val nbtTag = blockNBT.getCompound("nbt")
+                    convertNbtTagToMap(nbtTag) as? Map<String, Any>
+                } else {
+                    null
+                }
+
                 blocks.add(
                     PositionedBlock(
                         x = posX,
                         y = posY,
                         z = posZ,
                         block = blockData,
-                        blockEntityData = if (blockNBT.contains("nbt")) blockNBT.getCompound("nbt") else null
+                        blockEntityData = blockEntityData
                     )
                 )
             }
@@ -602,9 +610,9 @@ object StructureNbtManager {
             blockNBT.putIntArray("pos", intArrayOf(block.x, block.y, block.z))
             blockNBT.putInt("state", paletteIndices[block.block] ?: 0)
 
-            // Write block entity data if present
-            if (block.blockEntityData != null && block.blockEntityData is CompoundTag) {
-                blockNBT.put("nbt", block.blockEntityData as CompoundTag)
+            // Write block entity data if present (convert Map to NBT)
+            if (block.blockEntityData != null) {
+                blockNBT.put("nbt", convertMapToNbtTag(block.blockEntityData))
             }
 
             blocksList.add(blockNBT)
@@ -1211,6 +1219,84 @@ object StructureNbtManager {
         }
 
         return future
+    }
+
+    /**
+     * Convert Minecraft NBT Tag to Map<String, Any> (anti-corruption layer).
+     * Mirrors WorldAdapter.convertNbtToMap() to avoid coupling.
+     */
+    private fun convertNbtTagToMap(tag: net.minecraft.nbt.Tag): Any? {
+        return when (tag) {
+            is net.minecraft.nbt.CompoundTag -> {
+                val map = mutableMapOf<String, Any?>()
+                for (key in tag.allKeys) {
+                    map[key] = convertNbtTagToMap(tag.get(key)!!)
+                }
+                map
+            }
+            is net.minecraft.nbt.ListTag -> {
+                val list = mutableListOf<Any?>()
+                for (i in 0 until tag.size) {
+                    list.add(convertNbtTagToMap(tag[i]))
+                }
+                list
+            }
+            is net.minecraft.nbt.StringTag -> tag.asString
+            is net.minecraft.nbt.IntTag -> tag.asInt
+            is net.minecraft.nbt.ByteTag -> tag.asByte.toInt()
+            is net.minecraft.nbt.ShortTag -> tag.asShort.toInt()
+            is net.minecraft.nbt.LongTag -> tag.asLong
+            is net.minecraft.nbt.FloatTag -> tag.asFloat
+            is net.minecraft.nbt.DoubleTag -> tag.asDouble
+            is net.minecraft.nbt.ByteArrayTag -> tag.asByteArray.toList()
+            is net.minecraft.nbt.IntArrayTag -> tag.asIntArray.toList()
+            is net.minecraft.nbt.LongArrayTag -> tag.asLongArray.toList()
+            is net.minecraft.nbt.EndTag -> null
+            else -> tag.asString
+        }
+    }
+
+    /**
+     * Convert Map<String, Any> to Minecraft NBT CompoundTag (anti-corruption layer).
+     * Mirrors WorldAdapter.convertMapToNbt() to avoid coupling.
+     */
+    private fun convertMapToNbtTag(map: Map<String, Any>): net.minecraft.nbt.CompoundTag {
+        val compound = net.minecraft.nbt.CompoundTag()
+
+        map.forEach { (key, value) ->
+            when (value) {
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    compound.put(key, convertMapToNbtTag(value as Map<String, Any>))
+                }
+                is List<*> -> {
+                    val list = net.minecraft.nbt.ListTag()
+                    value.forEach { item ->
+                        when (item) {
+                            is Map<*, *> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                list.add(convertMapToNbtTag(item as Map<String, Any>))
+                            }
+                            is Number -> list.add(net.minecraft.nbt.IntTag.valueOf(item.toInt()))
+                            is String -> list.add(net.minecraft.nbt.StringTag.valueOf(item))
+                            else -> {} // Skip unknown types
+                        }
+                    }
+                    compound.put(key, list)
+                }
+                is String -> compound.putString(key, value)
+                is Int -> compound.putInt(key, value)
+                is Long -> compound.putLong(key, value)
+                is Float -> compound.putFloat(key, value)
+                is Double -> compound.putDouble(key, value)
+                is Boolean -> compound.putBoolean(key, value)
+                is Byte -> compound.putByte(key, value)
+                is Short -> compound.putShort(key, value)
+                else -> {} // Skip unknown types
+            }
+        }
+
+        return compound
     }
 
     /**
