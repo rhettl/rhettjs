@@ -123,7 +123,7 @@ class APITypeValidationTest {
         val builtinName = when (apiName) {
             "Runtime" -> "Runtime"
             "Console" -> "console"  // Special case: lowercase
-            "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "World", "Commands", "Server", "Store", "NBT", "Script" -> "__builtin_$apiName"
+            "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "World", "Commands", "Server", "Store", "NBT", "UI", "Script" -> "__builtin_$apiName"
             else -> throw IllegalArgumentException("Unknown API: $apiName")
         }
 

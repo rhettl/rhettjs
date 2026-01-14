@@ -344,6 +344,7 @@ object GraalEngine {
         val storeAPI = StoreAPIProxy.create()
         val serverAPI = ServerAPIProxy.create()
         val commandsAPI = CommandsAPIProxy.create(commandRegistry, ::getOrCreateContext)
+        val uiAPI = UIAPIProxy.create(context)
 
         // Put each API directly on globalThis for virtual module access
         bindings.putMember("__builtin_World", worldAPI)
@@ -354,6 +355,7 @@ object GraalEngine {
         bindings.putMember("__builtin_NBT", nbtAPI)
         bindings.putMember("__builtin_Server", serverAPI)
         bindings.putMember("__builtin_Commands", commandsAPI)
+        bindings.putMember("__builtin_UI", uiAPI)
 
         ConfigManager.debug("Injected built-in modules (all APIs ready)")
     }
