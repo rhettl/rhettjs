@@ -40,6 +40,9 @@ class ButtonWidget(
     private var isPressed: Boolean = false
     var enabled: Boolean = true
 
+    private val font
+        get() = net.minecraft.client.Minecraft.getInstance().font
+
     /**
      * Update the button text.
      */
@@ -85,11 +88,11 @@ class ButtonWidget(
         // Render button text
         val textComponent = Component.literal(text)
         val textColor = if (enabled) 0xFFFFFF else 0xA0A0A0
-        val textX = x + (width - graphics.font.width(textComponent)) / 2
+        val textX = x + (width - font.width(textComponent)) / 2
         val textY = y + (height - 8) / 2
 
         graphics.drawString(
-            graphics.font,
+            font,
             textComponent,
             textX,
             textY,

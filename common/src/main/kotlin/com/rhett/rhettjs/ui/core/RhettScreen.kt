@@ -59,7 +59,7 @@ class RhettScreen(val screenId: String) : Screen(Component.literal(screenId)) {
     /**
      * Clear all widgets from this screen.
      */
-    fun clearWidgets() {
+    override fun clearWidgets() {
         widgets.forEach { it.onRemoved() }
         widgets.clear()
         widgetsById.clear()
