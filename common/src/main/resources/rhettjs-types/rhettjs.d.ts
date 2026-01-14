@@ -13,6 +13,7 @@ export { default as NBT } from './nbt';
 export { default as Commands } from './commands';
 export { default as Server } from './server';
 export { default as World } from './world';
+export { default as UI } from './ui';
 export { StructureNbt, LargeStructureNbt } from './structure';
 export { WorldgenStructure } from './worldgen-structure';
 export { default as Script } from './script';
@@ -64,6 +65,7 @@ declare module 'rhettjs' {
     export { default as Commands } from './commands';
     export { default as Server } from './server';
     export { default as World } from './world';
+    export { default as UI } from './ui';
     export { StructureNbt, LargeStructureNbt } from './structure';
     export { WorldgenStructure } from './worldgen-structure';
     export { default as Script } from './script';
@@ -94,6 +96,10 @@ declare module 'rhettjs/server' {
 
 declare module 'rhettjs/world' {
     export { default } from './world';
+}
+
+declare module 'rhettjs/ui' {
+    export { default } from './ui';
 }
 
 declare module 'rhettjs/structure' {
@@ -132,6 +138,10 @@ declare module 'Server' {
 
 declare module 'World' {
     export { default } from './world';
+}
+
+declare module 'UI' {
+    export { default } from './ui';
 }
 
 declare module 'Structure' {
