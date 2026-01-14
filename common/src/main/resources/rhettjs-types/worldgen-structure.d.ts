@@ -1,6 +1,6 @@
 // RhettJS WorldgenStructure API Type Definitions
 // Version: 0.3.0
-// Last updated: 2026-01-06
+// Last updated: 2026-01-13
 
 /**
  * Options for WorldgenStructure.place()
@@ -175,158 +175,154 @@ interface WorldgenStructureInfo {
     isJigsaw: boolean;
 }
 
-/**
- * WorldgenStructure API - Access Minecraft's worldgen structure definitions
- *
- * This API provides read access to worldgen structures like villages, temples,
- * bastions, etc. These are the JSON-defined structures in data/worldgen/structure/
- * that control natural world generation.
- *
- * For .nbt template files, use StructureNbt instead.
- *
- * @example
- * // List all vanilla structures
- * const structures = await WorldgenStructure.list("minecraft");
- * console.log(structures); // ["minecraft:village_plains", "minecraft:bastion_remnant", ...]
- *
- * @example
- * // Get info about a specific structure
- * const info = await WorldgenStructure.info("minecraft:village_plains");
- * console.log(info.type);     // "minecraft:jigsaw"
- * console.log(info.isJigsaw); // true
- * console.log(info.step);     // "surface_structures"
- */
-declare namespace WorldgenStructure {
+declare module 'rhettjs/worldgen-structure' {
     /**
-     * List available worldgen structures
-     * @param namespace - Optional namespace filter (e.g., "minecraft")
-     * @returns Array of structure names in format "namespace:name"
+     * WorldgenStructure API - Access Minecraft's worldgen structure definitions
+     *
+     * This API provides read access to worldgen structures like villages, temples,
+     * bastions, etc. These are the JSON-defined structures in data/worldgen/structure/
+     * that control natural world generation.
+     *
+     * For .nbt template files, use StructureNbt instead.
+     *
      * @example
-     * const all = await WorldgenStructure.list();
-     * const vanilla = await WorldgenStructure.list("minecraft");
-     */
-    function list(namespace?: string): Promise<string[]>;
-
-    /**
-     * Check if a worldgen structure exists
-     * @param name - Structure name in format "[namespace:]name"
-     * @returns True if the structure exists
+     * import WorldgenStructure from 'rhettjs/worldgen-structure';
+     *
+     * // List all vanilla structures
+     * const structures = await WorldgenStructure.list("minecraft");
+     * console.log(structures); // ["minecraft:village_plains", "minecraft:bastion_remnant", ...]
+     *
      * @example
-     * if (await WorldgenStructure.exists("minecraft:village_plains")) {
-     *   console.log("Village plains structure exists!");
-     * }
-     */
-    function exists(name: string): Promise<boolean>;
-
-    /**
-     * Get detailed information about a worldgen structure
-     * @param name - Structure name in format "[namespace:]name"
-     * @returns Structure information including type, biomes, terrain adaptation, etc.
-     * @throws If structure not found
-     * @example
+     * // Get info about a specific structure
      * const info = await WorldgenStructure.info("minecraft:village_plains");
-     * console.log(`Type: ${info.type}`);
-     * console.log(`Biomes: ${info.biomesTag || info.biomes?.join(", ")}`);
-     * console.log(`Is Jigsaw: ${info.isJigsaw}`);
+     * console.log(info.type);     // "minecraft:jigsaw"
+     * console.log(info.isJigsaw); // true
+     * console.log(info.step);     // "surface_structures"
      */
-    function info(name: string): Promise<WorldgenStructureInfo>;
+    export const WorldgenStructure: {
+        /**
+         * List available worldgen structures
+         * @param namespace - Optional namespace filter (e.g., "minecraft")
+         * @returns Array of structure names in format "namespace:name"
+         * @example
+         * const all = await WorldgenStructure.list();
+         * const vanilla = await WorldgenStructure.list("minecraft");
+         */
+        list(namespace?: string): Promise<string[]>;
 
-    /**
-     * Place a worldgen structure at a position
-     *
-     * Uses vanilla-like placement with optional custom surface detection
-     * for placing on custom platforms.
-     *
-     * @param name - Structure name in format "[namespace:]name"
-     * @param options - Placement options (position, seed, surface mode, rotation)
-     * @returns Placement result with success status, bounding box, piece count
-     *
-     * @example
-     * // Basic placement with random seed
-     * const result = await WorldgenStructure.place("minecraft:village_plains", {
-     *     x: 0,
-     *     z: 0
-     * });
-     *
-     * @example
-     * // Placement on custom platform with specific seed
-     * const result = await WorldgenStructure.place("minecraft:village_plains", {
-     *     x: 0,
-     *     z: 0,
-     *     dimension: "rhettjs:structure_test",
-     *     seed: 12345,
-     *     surface: "scan"  // Scan platform for actual surface
-     * });
-     *
-     * @example
-     * // Visualize bearding with redstone blocks
-     * const result = await WorldgenStructure.place("minecraft:village_plains", {
-     *     x: 0,
-     *     z: 0,
-     *     surface: "scan",
-     *     simulateBearding: "minecraft:redstone_block"  // Show foundation shape
-     * });
-     *
-     * @example
-     * // Placement with fixed rotation
-     * const result = await WorldgenStructure.place("minecraft:bastion_remnant", {
-     *     x: 100,
-     *     z: 200,
-     *     rotation: "clockwise_90"
-     * });
-     */
-    function place(name: string, options: WorldgenStructurePlaceOptions): Promise<WorldgenStructurePlaceResult>;
+        /**
+         * Check if a worldgen structure exists
+         * @param name - Structure name in format "[namespace:]name"
+         * @returns True if the structure exists
+         * @example
+         * if (await WorldgenStructure.exists("minecraft:village_plains")) {
+         *   console.log("Village plains structure exists!");
+         * }
+         */
+        exists(name: string): Promise<boolean>;
 
-    /**
-     * Place a jigsaw structure from a template pool
-     *
-     * Similar to /place jigsaw command - places from a specific pool
-     * with controlled depth. Useful for testing individual structure parts.
-     *
-     * @param options - Jigsaw placement options
-     * @returns Placement result
-     *
-     * @example
-     * // Place village center pieces
-     * const result = await WorldgenStructure.placeJigsaw({
-     *     pool: "minecraft:village/plains/town_centers",
-     *     target: "minecraft:bottom",
-     *     maxDepth: 7,
-     *     x: 0,
-     *     z: 0,
-     *     surface: "scan"
-     * });
-     *
-     * @example
-     * // Place bastion pieces with limited depth
-     * const result = await WorldgenStructure.placeJigsaw({
-     *     pool: "minecraft:bastion/starts",
-     *     target: "minecraft:bottom",
-     *     maxDepth: 3,
-     *     x: 0,
-     *     z: 0
-     * });
-     *
-     * @example
-     * // Visualize bearding for jigsaw structures
-     * const result = await WorldgenStructure.placeJigsaw({
-     *     pool: "minecraft:village/plains/town_centers",
-     *     target: "minecraft:bottom",
-     *     maxDepth: 2,
-     *     x: 0,
-     *     z: 0,
-     *     simulateBearding: "minecraft:gold_block"  // Golden foundation
-     * });
-     */
-    function placeJigsaw(options: WorldgenStructurePlaceJigsawOptions): Promise<WorldgenStructurePlaceJigsawResult>;
+        /**
+         * Get detailed information about a worldgen structure
+         * @param name - Structure name in format "[namespace:]name"
+         * @returns Structure information including type, biomes, terrain adaptation, etc.
+         * @throws If structure not found
+         * @example
+         * const info = await WorldgenStructure.info("minecraft:village_plains");
+         * console.log(`Type: ${info.type}`);
+         * console.log(`Biomes: ${info.biomesTag || info.biomes?.join(", ")}`);
+         * console.log(`Is Jigsaw: ${info.isJigsaw}`);
+         */
+        info(name: string): Promise<WorldgenStructureInfo>;
+
+        /**
+         * Place a worldgen structure at a position
+         *
+         * Uses vanilla-like placement with optional custom surface detection
+         * for placing on custom platforms.
+         *
+         * @param name - Structure name in format "[namespace:]name"
+         * @param options - Placement options (position, seed, surface mode, rotation)
+         * @returns Placement result with success status, bounding box, piece count
+         *
+         * @example
+         * // Basic placement with random seed
+         * const result = await WorldgenStructure.place("minecraft:village_plains", {
+         *     x: 0,
+         *     z: 0
+         * });
+         *
+         * @example
+         * // Placement on custom platform with specific seed
+         * const result = await WorldgenStructure.place("minecraft:village_plains", {
+         *     x: 0,
+         *     z: 0,
+         *     dimension: "rhettjs:structure_test",
+         *     seed: 12345,
+         *     surface: "scan"  // Scan platform for actual surface
+         * });
+         *
+         * @example
+         * // Visualize bearding with redstone blocks
+         * const result = await WorldgenStructure.place("minecraft:village_plains", {
+         *     x: 0,
+         *     z: 0,
+         *     surface: "scan",
+         *     simulateBearding: "minecraft:redstone_block"  // Show foundation shape
+         * });
+         *
+         * @example
+         * // Placement with fixed rotation
+         * const result = await WorldgenStructure.place("minecraft:bastion_remnant", {
+         *     x: 100,
+         *     z: 200,
+         *     rotation: "clockwise_90"
+         * });
+         */
+        place(name: string, options: WorldgenStructurePlaceOptions): Promise<WorldgenStructurePlaceResult>;
+
+        /**
+         * Place a jigsaw structure from a template pool
+         *
+         * Similar to /place jigsaw command - places from a specific pool
+         * with controlled depth. Useful for testing individual structure parts.
+         *
+         * @param options - Jigsaw placement options
+         * @returns Placement result
+         *
+         * @example
+         * // Place village center pieces
+         * const result = await WorldgenStructure.placeJigsaw({
+         *     pool: "minecraft:village/plains/town_centers",
+         *     target: "minecraft:bottom",
+         *     maxDepth: 7,
+         *     x: 0,
+         *     z: 0,
+         *     surface: "scan"
+         * });
+         *
+         * @example
+         * // Place bastion pieces with limited depth
+         * const result = await WorldgenStructure.placeJigsaw({
+         *     pool: "minecraft:bastion/starts",
+         *     target: "minecraft:bottom",
+         *     maxDepth: 3,
+         *     x: 0,
+         *     z: 0
+         * });
+         *
+         * @example
+         * // Visualize bearding for jigsaw structures
+         * const result = await WorldgenStructure.placeJigsaw({
+         *     pool: "minecraft:village/plains/town_centers",
+         *     target: "minecraft:bottom",
+         *     maxDepth: 2,
+         *     x: 0,
+         *     z: 0,
+         *     simulateBearding: "minecraft:gold_block"  // Golden foundation
+         * });
+         */
+        placeJigsaw(options: WorldgenStructurePlaceJigsawOptions): Promise<WorldgenStructurePlaceJigsawResult>;
+    };
+
+    export default WorldgenStructure;
 }
-
-export { WorldgenStructure };
-export type {
-    WorldgenStructureInfo,
-    WorldgenStructurePlaceOptions,
-    WorldgenStructurePlaceResult,
-    WorldgenStructurePlaceJigsawOptions,
-    WorldgenStructurePlaceJigsawResult
-};
-export default WorldgenStructure;

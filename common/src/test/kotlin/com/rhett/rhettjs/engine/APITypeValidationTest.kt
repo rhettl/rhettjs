@@ -41,8 +41,8 @@ class APITypeValidationTest {
 
     /**
      * Parse .d.ts file to extract declared method names for an API.
-     * Reads from individual API files (e.g., /rhettjs-types/world.d.ts)
-     * @param apiName The namespace name (e.g., "StructureNbt", "World")
+     * Supports both namespace pattern and module pattern.
+     * @param apiName The API name (e.g., "StructureNbt", "World")
      * @return Sorted list of method names
      */
     private fun parseTypeDefinitions(apiName: String): List<String> {
@@ -53,10 +53,12 @@ class APITypeValidationTest {
             "World" -> "world.d.ts"
             "Commands" -> "commands.d.ts"
             "Server" -> "server.d.ts"
+            "Client" -> "client.d.ts"
             "Store" -> "store.d.ts"
             "NBT" -> "nbt.d.ts"
             "Runtime" -> "runtime.d.ts"
             "Script" -> "script.d.ts"
+            "UI" -> "ui.d.ts"
             else -> throw IllegalArgumentException("Unknown API: $apiName")
         }
 
@@ -65,18 +67,78 @@ class APITypeValidationTest {
             ?.readText()
             ?: throw IllegalStateException("Type definitions not found at /rhettjs-types/$fileName")
 
-        // Extract the API block: "declare namespace ApiName { ... }" or "namespace ApiName { ... }" (inside declare global)
-        val namespacePattern = """(?:declare\s+)?namespace\s+$apiName\s*\{""".toRegex()
-        val match = namespacePattern.find(dtsContent)
-            ?: throw IllegalStateException("Namespace '$apiName' not found in type definitions")
+        // Try Module Pattern first: "declare module 'rhettjs/...' { export const API: { ... } }"
+        val modulePattern = """declare\s+module\s+['"]rhettjs/[\w-]+['"]\s*\{""".toRegex()
+        val moduleMatch = modulePattern.find(dtsContent)
 
-        // Find matching closing brace (accounting for nested braces)
+        if (moduleMatch != null) {
+            return parseModulePattern(dtsContent, apiName, moduleMatch)
+        }
+
+        // Fall back to Namespace Pattern: "declare namespace API { ... }"
+        val namespacePattern = """(?:declare\s+)?namespace\s+$apiName\s*\{""".toRegex()
+        val namespaceMatch = namespacePattern.find(dtsContent)
+
+        if (namespaceMatch != null) {
+            return parseNamespacePattern(dtsContent, apiName, namespaceMatch)
+        }
+
+        throw IllegalStateException("No valid declaration (namespace or module) found for '$apiName' in $fileName")
+    }
+
+    /**
+     * Parse module pattern: declare module 'rhettjs/api' { export const API: { ... } }
+     */
+    private fun parseModulePattern(content: String, apiName: String, moduleMatch: MatchResult): List<String> {
+        // Find "export const API: {" or "export const API = {"
+        val exportPattern = """export\s+const\s+$apiName\s*:\s*\{""".toRegex()
+        val exportMatch = exportPattern.find(content, moduleMatch.range.last)
+            ?: throw IllegalStateException("No 'export const $apiName' found in module declaration")
+
+        // Extract the API object block
+        val apiBlock = extractBlock(content, exportMatch)
+
+        // Extract method names ONLY: "methodName(" or "methodName?("
+        // Properties like "readonly dimensions: string[]" are excluded
+        val methodPattern = """^\s+(?:readonly\s+)?(\w+)\??\s*\(""".toRegex(RegexOption.MULTILINE)
+
+        return methodPattern.findAll(apiBlock)
+            .map { it.groupValues[1] }
+            .filter { it != apiName } // Exclude constructor if present
+            .filter { !it.matches("""^[A-Z].*""".toRegex()) } // Exclude type names (PascalCase)
+            .distinct()
+            .sorted()
+            .toList()
+    }
+
+    /**
+     * Parse namespace pattern: declare namespace API { ... }
+     */
+    private fun parseNamespacePattern(content: String, apiName: String, namespaceMatch: MatchResult): List<String> {
+        val apiBlock = extractBlock(content, namespaceMatch)
+
+        // Extract method names: "function methodName(" or "methodName("
+        val methodPattern = """^\s+(?:function\s+)?(\w+)\s*\(""".toRegex(RegexOption.MULTILINE)
+
+        return methodPattern.findAll(apiBlock)
+            .map { it.groupValues[1] }
+            .filter { it != apiName } // Exclude constructor if present
+            .filter { !it.matches("""^[A-Z].*""".toRegex()) } // Exclude type names (PascalCase)
+            .distinct()
+            .sorted()
+            .toList()
+    }
+
+    /**
+     * Extract a block by finding matching closing brace (accounts for nesting)
+     */
+    private fun extractBlock(content: String, match: MatchResult): String {
         val startIdx = match.range.last + 1
         var braceCount = 1
         var endIdx = startIdx
 
-        for (i in startIdx until dtsContent.length) {
-            when (dtsContent[i]) {
+        for (i in startIdx until content.length) {
+            when (content[i]) {
                 '{' -> braceCount++
                 '}' -> {
                     braceCount--
@@ -88,20 +150,7 @@ class APITypeValidationTest {
             }
         }
 
-        val apiBlock = dtsContent.substring(startIdx, endIdx)
-
-        // Extract method names: "function methodName(" or "methodName("
-        // Only match lines that start with whitespace + function or just method name
-        // This avoids matching parameter names inside function signatures
-        val methodPattern = """^\s+(?:function\s+)?(\w+)\s*\(""".toRegex(RegexOption.MULTILINE)
-
-        return methodPattern.findAll(apiBlock)
-            .map { it.groupValues[1] }
-            .filter { it != apiName } // Exclude constructor if present
-            .filter { !it.matches("""^[A-Z].*""".toRegex()) } // Exclude type names (PascalCase)
-            .distinct()
-            .sorted()
-            .toList()
+        return content.substring(startIdx, endIdx)
     }
 
     /**
@@ -123,7 +172,7 @@ class APITypeValidationTest {
         val builtinName = when (apiName) {
             "Runtime" -> "Runtime"
             "Console" -> "console"  // Special case: lowercase
-            "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "World", "Commands", "Server", "Store", "NBT", "UI", "Script" -> "__builtin_$apiName"
+            "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "World", "Commands", "Server", "Client", "Store", "NBT", "UI", "Script" -> "__builtin_$apiName"
             else -> throw IllegalArgumentException("Unknown API: $apiName")
         }
 
@@ -140,6 +189,7 @@ class APITypeValidationTest {
             "env",          // Runtime.env
             "dimensions",   // World.dimensions
             "tps", "players", "maxPlayers", "motd", "eventTypes",  // Server properties
+            "player",       // Client.player
             "raw"           // Script.argv.raw
         )
 
@@ -290,6 +340,39 @@ class APITypeValidationTest {
     }
 
     @Test
+    fun `Client API matches type definitions`() {
+        // Force CLIENT context by executing a CLIENT script first
+        // This ensures Client API is injected into bindings
+        val initScript = ScriptInfo(
+            name = "client-api-init.js",
+            path = createTempScript("console.log('Initializing CLIENT context');"),
+            category = ScriptCategory.CLIENT,
+            lastModified = System.currentTimeMillis(),
+            status = ScriptStatus.LOADED
+        )
+        GraalEngine.executeScript(initScript)
+
+        val expected = parseTypeDefinitions("Client")
+        val actual = getRuntimeMethods("Client")
+
+        assertEquals(
+            expected,
+            actual,
+            """
+            Client API methods don't match rhettjs.d.ts!
+
+            Expected (from .d.ts): $expected
+            Actual (from runtime): $actual
+
+            Missing from runtime: ${expected - actual.toSet()}
+            Missing from .d.ts: ${actual - expected.toSet()}
+
+            Action: Update common/src/main/resources/rhettjs-types/client.d.ts
+            """.trimIndent()
+        )
+    }
+
+    @Test
     fun `NBT API matches type definitions`() {
         val expected = parseTypeDefinitions("NBT")
         val actual = getRuntimeMethods("NBT")
@@ -356,6 +439,28 @@ class APITypeValidationTest {
     }
 
     @Test
+    fun `UI API matches type definitions`() {
+        val expected = parseTypeDefinitions("UI")
+        val actual = getRuntimeMethods("UI")
+
+        assertEquals(
+            expected,
+            actual,
+            """
+            UI API methods don't match ui.d.ts!
+
+            Expected (from .d.ts): $expected
+            Actual (from runtime): $actual
+
+            Missing from runtime: ${expected - actual.toSet()}
+            Missing from .d.ts: ${actual - expected.toSet()}
+
+            Action: Update common/src/main/resources/rhettjs-types/ui.d.ts
+            """.trimIndent()
+        )
+    }
+
+    @Test
     fun `type definitions files exist and are readable`() {
         // Check barrel file
         val barrelContent = javaClass.getResourceAsStream("/rhettjs-types/rhettjs.d.ts")
@@ -365,7 +470,7 @@ class APITypeValidationTest {
 
         // Check individual API files
         val apiFiles = listOf("world.d.ts", "commands.d.ts", "server.d.ts", "structure.d.ts",
-                              "worldgen-structure.d.ts", "store.d.ts", "nbt.d.ts", "runtime.d.ts", "script.d.ts", "types.d.ts")
+                              "worldgen-structure.d.ts", "store.d.ts", "nbt.d.ts", "runtime.d.ts", "script.d.ts", "ui.d.ts", "types.d.ts")
 
         for (file in apiFiles) {
             val content = javaClass.getResourceAsStream("/rhettjs-types/$file")
@@ -374,11 +479,11 @@ class APITypeValidationTest {
             assertNotNull(content, "$file should be present in resources")
         }
 
-        // Verify structure.d.ts contains both APIs
+        // Verify structure.d.ts contains both APIs (module pattern)
         val structureContent = javaClass.getResourceAsStream("/rhettjs-types/structure.d.ts")
             ?.bufferedReader()
             ?.readText()
-        assertTrue(structureContent!!.contains("declare namespace StructureNbt"), "structure.d.ts should contain StructureNbt API")
-        assertTrue(structureContent.contains("declare namespace LargeStructureNbt"), "structure.d.ts should contain LargeStructureNbt API")
+        assertTrue(structureContent!!.contains("export const StructureNbt"), "structure.d.ts should contain StructureNbt API")
+        assertTrue(structureContent.contains("export const LargeStructureNbt"), "structure.d.ts should contain LargeStructureNbt API")
     }
 }

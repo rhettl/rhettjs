@@ -37,7 +37,7 @@ class RhettJSFileSystem(
 ) : FileSystem {
 
     companion object {
-        private val BUILT_IN_MODULES = setOf("World", "Structure", "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "Store", "NBT", "Server", "Commands", "UI", "Runtime", "Script")
+        private val BUILT_IN_MODULES = setOf("World", "Structure", "StructureNbt", "LargeStructureNbt", "WorldgenStructure", "Store", "NBT", "Server", "Client", "Commands", "UI", "Runtime", "Script")
         private const val VIRTUAL_PREFIX = "/__builtins__/"
 
         // Map submodule paths to their API names
@@ -46,6 +46,7 @@ class RhettJSFileSystem(
             "rhettjs/world" to "World",
             "rhettjs/commands" to "Commands",
             "rhettjs/server" to "Server",
+            "rhettjs/client" to "Client",
             "rhettjs/store" to "Store",
             "rhettjs/nbt" to "NBT",
             "rhettjs/ui" to "UI",
@@ -213,6 +214,7 @@ class RhettJSFileSystem(
                 export { default as World } from '/__builtins__/World';
                 export { default as Commands } from '/__builtins__/Commands';
                 export { default as Server } from '/__builtins__/Server';
+                export { default as Client } from '/__builtins__/Client';
                 export { default as Store } from '/__builtins__/Store';
                 export { default as NBT } from '/__builtins__/NBT';
                 export { default as StructureNbt } from '/__builtins__/StructureNbt';

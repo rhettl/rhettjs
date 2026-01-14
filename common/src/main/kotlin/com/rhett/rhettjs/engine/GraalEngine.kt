@@ -63,6 +63,28 @@ object GraalEngine {
     // Custom command registry for Commands API
     private val commandRegistry = CustomCommandRegistry()
 
+    // Cached API objects (created once, reused across script executions)
+    @Volatile
+    private var cachedWorldAPI: Any? = null
+    @Volatile
+    private var cachedStructureNbtAPI: Any? = null
+    @Volatile
+    private var cachedLargeStructureNbtAPI: Any? = null
+    @Volatile
+    private var cachedWorldgenStructureAPI: Any? = null
+    @Volatile
+    private var cachedNbtAPI: Any? = null
+    @Volatile
+    private var cachedStoreAPI: Any? = null
+    @Volatile
+    private var cachedServerAPI: Any? = null
+    @Volatile
+    private var cachedCommandsAPI: Any? = null
+    @Volatile
+    private var cachedUIAPI: Any? = null
+    @Volatile
+    private var cachedClientAPI: Any? = null
+
     /**
      * Set the scripts base directory (called during initialization).
      * Required for ES6 module resolution.
@@ -88,12 +110,25 @@ object GraalEngine {
         // Clear cached helpers (will be re-initialized on next script execution)
         JSHelpers.clearHelpers()
 
+        // Clear cached API objects (will be recreated on next context creation)
+        cachedWorldAPI = null
+        cachedStructureNbtAPI = null
+        cachedLargeStructureNbtAPI = null
+        cachedWorldgenStructureAPI = null
+        cachedNbtAPI = null
+        cachedStoreAPI = null
+        cachedServerAPI = null
+        cachedCommandsAPI = null
+        cachedUIAPI = null
+        cachedClientAPI = null
+
         // Clear command registry and context reference
         commandRegistry.clear()
         commandRegistry.context = null
 
         // Reset managers (they will get new context references when context is recreated)
         com.rhett.rhettjs.events.ServerEventManager.reset()
+        com.rhett.rhettjs.events.ClientEventManager.reset()
         com.rhett.rhettjs.world.WorldManager.reset()
         com.rhett.rhettjs.structure.StructureNbtManager.reset()
         com.rhett.rhettjs.structure.LargeStructureNbtManager.reset()
@@ -196,11 +231,43 @@ object GraalEngine {
                 val waitFn = WaitFunctionAPI.create(newCtx)
                 bindings.putMember("wait", waitFn)
 
-                // Inject built-in API modules (World, Structure, Store, NBT, Server, Commands)
-                injectBuiltinModules(bindings, newCtx)
+                // Inject ALL built-in API modules during initialization (for validation/testing)
+                // Script execution will re-inject based on actual execution context
+                // We inject both SERVER and CLIENT APIs here so validation tests can introspect everything
+                val structureNbtAPI = StructureAPIsProxy.createStructureNbtAPI(newCtx)
+                val largeStructureNbtAPI = StructureAPIsProxy.createLargeStructureNbtAPI(newCtx)
+                val nbtAPI = NBTAPI.create()
+                val storeAPI = StoreAPIProxy.create()
+                val worldAPI = WorldAPIProxy.create(newCtx)
+                val serverAPI = ServerAPIProxy.create()
+                val commandsAPI = CommandsAPIProxy.create(commandRegistry, ::getOrCreateContext)
+                val worldgenStructureAPI = StructureAPIsProxy.createWorldgenStructureAPI(newCtx)
+                val uiAPI = UIAPIProxy.create(newCtx)
+
+                bindings.putMember("__builtin_StructureNbt", structureNbtAPI)
+                bindings.putMember("__builtin_LargeStructureNbt", largeStructureNbtAPI)
+                bindings.putMember("__builtin_Store", storeAPI)
+                bindings.putMember("__builtin_NBT", nbtAPI)
+                bindings.putMember("__builtin_World", worldAPI)
+                bindings.putMember("__builtin_Server", serverAPI)
+                bindings.putMember("__builtin_Commands", commandsAPI)
+                bindings.putMember("__builtin_WorldgenStructure", worldgenStructureAPI)
+                bindings.putMember("__builtin_UI", uiAPI)
+
+                // Cache these for reuse in injectBuiltinModules()
+                cachedStructureNbtAPI = structureNbtAPI
+                cachedLargeStructureNbtAPI = largeStructureNbtAPI
+                cachedNbtAPI = nbtAPI
+                cachedStoreAPI = storeAPI
+                cachedWorldAPI = worldAPI
+                cachedServerAPI = serverAPI
+                cachedCommandsAPI = commandsAPI
+                cachedWorldgenStructureAPI = worldgenStructureAPI
+                cachedUIAPI = uiAPI
 
                 // Set context reference in managers
                 com.rhett.rhettjs.events.ServerEventManager.setContext(newCtx)
+                com.rhett.rhettjs.events.ClientEventManager.setContext(newCtx)
                 com.rhett.rhettjs.world.WorldManager.setContext(newCtx)
                 com.rhett.rhettjs.structure.StructureNbtManager.setContext(newCtx)
                 com.rhett.rhettjs.structure.LargeStructureNbtManager.setContext(newCtx)
@@ -286,6 +353,10 @@ object GraalEngine {
 
     /**
      * Inject JavaScript bindings into the context based on script category.
+     * Re-injects APIs based on execution context to ensure correct API availability:
+     * - CLIENT scripts: UI + universal APIs
+     * - SERVER scripts: World, Server, Commands, WorldgenStructure + universal APIs
+     * - UNIVERSAL scripts: Only universal APIs
      */
     private fun injectBindings(
         context: Context,
@@ -293,9 +364,11 @@ object GraalEngine {
         additionalBindings: Map<String, Any>
     ) {
         val bindings = context.getBindings("js")
+        val executionContext = category.executionContext
 
-        // Console, Runtime, wait(), and built-in modules are already injected
-        // during context initialization in getOrCreateContext()
+        // Re-inject built-in modules with correct execution context filtering
+        // This ensures each script only has access to appropriate APIs
+        injectBuiltinModules(bindings, context, executionContext)
 
         // Inject Script.* for utility scripts (or remove if not utility)
         if (category == ScriptCategory.UTILITY) {
@@ -318,9 +391,7 @@ object GraalEngine {
             ConfigManager.debug("Injected binding: $name")
         }
 
-        val baseBindings = 9 // console, Runtime, wait, World, Structure, Store, NBT, Server, Commands
-        val scriptBindings = if (category == ScriptCategory.UTILITY) 1 else 0  // Script.*
-        ConfigManager.debug("Injected ${baseBindings + scriptBindings + additionalBindings.size} bindings for category: $category")
+        ConfigManager.debug("Configured bindings for category: $category (execution context: $executionContext)")
     }
 
     /**
@@ -328,36 +399,62 @@ object GraalEngine {
      * These modules are available via: import World from 'World'
      * Each API is stored directly on globalThis as __builtin_<Name> for virtual module access.
      *
+     * APIs are filtered based on execution context:
+     * - SERVER: World, Server, Commands, WorldgenStructure + universal
+     * - CLIENT: UI + universal
+     * - UNIVERSAL: Store, NBT, StructureNbt, LargeStructureNbt
+     *
      * NOTE TO FUTURE DEVELOPERS: When adding a new JavaScript API:
      * 1. Create a new file in engine/api/ (e.g., MyNewAPIProxy.kt)
      * 2. Implement a `create()` method that returns ProxyObject
-     * 3. Add it to this function below
+     * 3. Add it to this function below with appropriate execution context filtering
      * 4. Update the TypeScript definitions in rhettjs-types/
      */
-    private fun injectBuiltinModules(bindings: Value, context: Context) {
-        // Create all API bindings using extracted proxy classes
-        val worldAPI = WorldAPIProxy.create(context)
-        val structureNbtAPI = StructureAPIsProxy.createStructureNbtAPI(context)
-        val largeStructureNbtAPI = StructureAPIsProxy.createLargeStructureNbtAPI(context)
-        val worldgenStructureAPI = StructureAPIsProxy.createWorldgenStructureAPI(context)
-        val nbtAPI = NBTAPI.create()
-        val storeAPI = StoreAPIProxy.create()
-        val serverAPI = ServerAPIProxy.create()
-        val commandsAPI = CommandsAPIProxy.create(commandRegistry, ::getOrCreateContext)
-        val uiAPI = UIAPIProxy.create(context)
+    private fun injectBuiltinModules(bindings: Value, context: Context, executionContext: ExecutionContext) {
+        // Universal APIs (always available in all contexts) - cache and reuse
+        if (cachedStructureNbtAPI == null) cachedStructureNbtAPI = StructureAPIsProxy.createStructureNbtAPI(context)
+        if (cachedLargeStructureNbtAPI == null) cachedLargeStructureNbtAPI = StructureAPIsProxy.createLargeStructureNbtAPI(context)
+        if (cachedNbtAPI == null) cachedNbtAPI = NBTAPI.create()
+        if (cachedStoreAPI == null) cachedStoreAPI = StoreAPIProxy.create()
 
-        // Put each API directly on globalThis for virtual module access
-        bindings.putMember("__builtin_World", worldAPI)
-        bindings.putMember("__builtin_StructureNbt", structureNbtAPI)
-        bindings.putMember("__builtin_LargeStructureNbt", largeStructureNbtAPI)
-        bindings.putMember("__builtin_WorldgenStructure", worldgenStructureAPI)
-        bindings.putMember("__builtin_Store", storeAPI)
-        bindings.putMember("__builtin_NBT", nbtAPI)
-        bindings.putMember("__builtin_Server", serverAPI)
-        bindings.putMember("__builtin_Commands", commandsAPI)
-        bindings.putMember("__builtin_UI", uiAPI)
+        // Always inject universal APIs
+        if (!bindings.hasMember("__builtin_StructureNbt")) bindings.putMember("__builtin_StructureNbt", cachedStructureNbtAPI!!)
+        if (!bindings.hasMember("__builtin_LargeStructureNbt")) bindings.putMember("__builtin_LargeStructureNbt", cachedLargeStructureNbtAPI!!)
+        if (!bindings.hasMember("__builtin_Store")) bindings.putMember("__builtin_Store", cachedStoreAPI!!)
+        if (!bindings.hasMember("__builtin_NBT")) bindings.putMember("__builtin_NBT", cachedNbtAPI!!)
 
-        ConfigManager.debug("Injected built-in modules (all APIs ready)")
+        // Server-only APIs - cache, inject for SERVER, remove for others
+        if (executionContext == ExecutionContext.SERVER) {
+            if (cachedWorldAPI == null) cachedWorldAPI = WorldAPIProxy.create(context)
+            if (cachedServerAPI == null) cachedServerAPI = ServerAPIProxy.create()
+            if (cachedCommandsAPI == null) cachedCommandsAPI = CommandsAPIProxy.create(commandRegistry, ::getOrCreateContext)
+            if (cachedWorldgenStructureAPI == null) cachedWorldgenStructureAPI = StructureAPIsProxy.createWorldgenStructureAPI(context)
+
+            if (!bindings.hasMember("__builtin_World")) bindings.putMember("__builtin_World", cachedWorldAPI!!)
+            if (!bindings.hasMember("__builtin_Server")) bindings.putMember("__builtin_Server", cachedServerAPI!!)
+            if (!bindings.hasMember("__builtin_Commands")) bindings.putMember("__builtin_Commands", cachedCommandsAPI!!)
+            if (!bindings.hasMember("__builtin_WorldgenStructure")) bindings.putMember("__builtin_WorldgenStructure", cachedWorldgenStructureAPI!!)
+        } else {
+            // Remove server APIs for CLIENT and UNIVERSAL contexts
+            if (bindings.hasMember("__builtin_World")) bindings.removeMember("__builtin_World")
+            if (bindings.hasMember("__builtin_Server")) bindings.removeMember("__builtin_Server")
+            if (bindings.hasMember("__builtin_Commands")) bindings.removeMember("__builtin_Commands")
+            if (bindings.hasMember("__builtin_WorldgenStructure")) bindings.removeMember("__builtin_WorldgenStructure")
+        }
+
+        // Client-only APIs - cache, inject for CLIENT, remove for others
+        if (executionContext == ExecutionContext.CLIENT) {
+            if (cachedUIAPI == null) cachedUIAPI = UIAPIProxy.create(context)
+            if (!bindings.hasMember("__builtin_UI")) bindings.putMember("__builtin_UI", cachedUIAPI!!)
+            if (cachedClientAPI == null) cachedClientAPI = com.rhett.rhettjs.engine.api.ClientAPIProxy.create(context)
+            if (!bindings.hasMember("__builtin_Client")) bindings.putMember("__builtin_Client", cachedClientAPI!!)
+        } else {
+            // Remove UI and Client APIs for SERVER and UNIVERSAL contexts
+            if (bindings.hasMember("__builtin_UI")) bindings.removeMember("__builtin_UI")
+            if (bindings.hasMember("__builtin_Client")) bindings.removeMember("__builtin_Client")
+        }
+
+        ConfigManager.debug("Injected built-in modules for execution context: $executionContext")
     }
 
     /**

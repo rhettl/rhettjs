@@ -49,7 +49,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World API import works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -83,7 +83,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.dimensions is correct');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -108,7 +108,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getBlock returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -133,7 +133,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setBlock returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -162,7 +162,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setBlock accepts optional properties');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -188,7 +188,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.fill returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -214,7 +214,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.replace returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -239,7 +239,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getEntities returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -264,7 +264,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.spawnEntity returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -293,7 +293,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.spawnEntity accepts optional NBT');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -317,7 +317,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getPlayers returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -341,7 +341,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getPlayer returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -365,7 +365,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getTime returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -393,7 +393,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getTime accepts optional dimension');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -417,7 +417,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setTime returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -445,7 +445,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setTime accepts optional dimension');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -469,7 +469,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getWeather returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -497,7 +497,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.getWeather accepts optional dimension');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -521,7 +521,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setWeather returns Promise');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -549,7 +549,7 @@ class WorldAPIBindingsTest {
 
                 console.log('World.setWeather accepts optional dimension');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )

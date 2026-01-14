@@ -1,6 +1,6 @@
 // RhettJS Store API Type Definitions
 // Version: 0.3.0
-// Last updated: 2026-01-06
+// Last updated: 2026-01-13
 
 /** Namespaced store for organizing related data */
 export interface NamespacedStore {
@@ -22,28 +22,32 @@ export interface NamespacedStore {
     entries(): Record<string, any>;
 }
 
-/**
- * Ephemeral key-value store (persists until server restart)
- * @example
- * const positions = Store.namespace('positions');
- * positions.set('pos1', { x: 100, y: 64, z: 200 });
- */
-declare namespace Store {
+declare module 'rhettjs/store' {
     /**
-     * Create or get a namespaced store
-     * @param namespace - Namespace identifier
-     * @returns Namespaced store instance
+     * Ephemeral key-value store (persists until server restart)
+     * @example
+     * import Store from 'rhettjs/store';
+     *
+     * const positions = Store.namespace('positions');
+     * positions.set('pos1', { x: 100, y: 64, z: 200 });
      */
-    function namespace(namespace: string): NamespacedStore;
+    export const Store: {
+        /**
+         * Create or get a namespaced store
+         * @param namespace - Namespace identifier
+         * @returns Namespaced store instance
+         */
+        namespace(namespace: string): NamespacedStore;
 
-    /** Get all namespace names */
-    function namespaces(): string[];
+        /** Get all namespace names */
+        namespaces(): string[];
 
-    /** Clear all data across all namespaces */
-    function clearAll(): void;
+        /** Clear all data across all namespaces */
+        clearAll(): void;
 
-    /** Total items across all namespaces */
-    function size(): number;
+        /** Total items across all namespaces */
+        size(): number;
+    };
+
+    export default Store;
 }
-
-export default Store;

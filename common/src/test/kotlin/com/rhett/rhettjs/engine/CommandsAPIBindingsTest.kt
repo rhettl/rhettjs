@@ -44,7 +44,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Commands API import works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -76,7 +76,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Commands.register() returns builder');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -103,7 +103,7 @@ class CommandsAPIBindingsTest {
                 // Should complete without error
                 console.log('Builder methods are chainable');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -127,7 +127,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Simple command registered');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -153,7 +153,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Command with argument registered');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -180,7 +180,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Command with multiple arguments registered');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -216,7 +216,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Command event object has correct structure');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -240,7 +240,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Async command handler registered');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -265,7 +265,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Commands.unregister() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -289,7 +289,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Permission as string works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -316,7 +316,7 @@ class CommandsAPIBindingsTest {
 
                 console.log('Permission as function works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )

@@ -334,6 +334,33 @@ function setblock(pos, block, mode) {
 }
 
 /**
+ * Effect command helper
+ *
+ * @param {string} giveOrClear - ['give', 'clear']
+ * @param {string} target - target of effect
+ * @param {string} [effect] - name of effect or may be empty for clear
+ * @param {int} [duration] - duration in ticks
+ * @param {int} [strength] - duration in ticks
+ * @param {boolean} [hideParticles] - duration in ticks
+ * @returns {string} - Effect command string
+ */
+function effect(giveOrClear, target, effect, duration = 200, strength = 0, hideParticles = false) {
+  if (!target) {
+    throw new Error(`please provide target for effect command`);
+  }
+
+  if (giveOrClear === 'clear') {
+    return `effect clear ${target}${effect ? ` effect` : ''}`;
+  }
+  if (giveOrClear === 'give') {
+    return `effect give ${target} ${effect} ${duration} ${strength} ${hideParticles ? 'true' : 'false'}`;
+  }
+  throw new Error("'give' or 'clear' required for effect command");
+}
+
+
+
+/**
  * Execute command builder - constructs complex /execute commands
  * Returns a builder object for chaining
  *
@@ -384,6 +411,7 @@ export {
   give,
   fill,
   setblock,
+  effect,
   execute,
   ExecuteBuilder,
   executeCaller,
@@ -402,6 +430,7 @@ export default {
   give,
   fill,
   setblock,
+  effect,
   execute,
   ExecuteBuilder,
   executeCaller,

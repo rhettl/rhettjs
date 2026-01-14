@@ -19,6 +19,12 @@
         "adapter": "kotlin",
         "value": "com.rhett.rhettjs.RhettJSFabric"
       }
+    ],
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "com.rhett.rhettjs.RhettJSFabricClient"
+      }
     ]
   },
   "mixins": [

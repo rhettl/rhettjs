@@ -1,57 +1,61 @@
 // RhettJS NBT API Type Definitions
 // Version: 0.3.0
-// Last updated: 2026-01-06
+// Last updated: 2026-01-13
 
-/**
- * NBT manipulation utilities
- * @example
- * const compound = NBT.compound({ display: { Name: 'Custom Item' } });
- */
-declare namespace NBT {
-    function compound(data?: Record<string, any>): any;
-    function list(items?: any[]): any;
-    function string(value: string): any;
-    function int(value: number): any;
-    function double(value: number): any;
-    function byte(value: number): any;
-
+declare module 'rhettjs/nbt' {
     /**
-     * Get value at path
-     * @param nbt - NBT data
-     * @param path - Dot-separated path (e.g., "display.Name")
+     * NBT manipulation utilities
+     * @example
+     * import NBT from 'rhettjs/nbt';
+     *
+     * const compound = NBT.compound({ display: { Name: 'Custom Item' } });
      */
-    function get(nbt: any, path: string): any;
+    export const NBT: {
+        compound(data?: Record<string, any>): any;
+        list(items?: any[]): any;
+        string(value: string): any;
+        int(value: number): any;
+        double(value: number): any;
+        byte(value: number): any;
 
-    /**
-     * Set value at path
-     * @param nbt - NBT data
-     * @param path - Dot-separated path
-     * @param value - Value to set
-     */
-    function set(nbt: any, path: string, value: any): any;
+        /**
+         * Get value at path
+         * @param nbt - NBT data
+         * @param path - Dot-separated path (e.g., "display.Name")
+         */
+        get(nbt: any, path: string): any;
 
-    /**
-     * Check if path exists
-     * @param nbt - NBT data
-     * @param path - Dot-separated path
-     */
-    function has(nbt: any, path: string): boolean;
+        /**
+         * Set value at path
+         * @param nbt - NBT data
+         * @param path - Dot-separated path
+         * @param value - Value to set
+         */
+        set(nbt: any, path: string, value: any): any;
 
-    /**
-     * Delete path from NBT data
-     * @param nbt - NBT data
-     * @param path - Dot-separated path
-     * @returns Modified NBT data
-     */
-    function remove(nbt: any, path: string): any;
+        /**
+         * Check if path exists
+         * @param nbt - NBT data
+         * @param path - Dot-separated path
+         */
+        has(nbt: any, path: string): boolean;
 
-    /**
-     * Merge NBT data
-     * @param target - Target NBT
-     * @param source - Source NBT
-     * @param options - Merge options
-     */
-    function merge(target: any, source: any, options?: { deep?: boolean }): any;
+        /**
+         * Delete path from NBT data
+         * @param nbt - NBT data
+         * @param path - Dot-separated path
+         * @returns Modified NBT data
+         */
+        remove(nbt: any, path: string): any;
+
+        /**
+         * Merge NBT data
+         * @param target - Target NBT
+         * @param source - Source NBT
+         * @param options - Merge options
+         */
+        merge(target: any, source: any, options?: { deep?: boolean }): any;
+    };
+
+    export default NBT;
 }
-
-export default NBT;

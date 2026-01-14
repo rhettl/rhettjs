@@ -1,8 +1,6 @@
 // RhettJS Commands API Type Definitions
 // Version: 0.3.0
-// Last updated: 2026-01-06
-
-import { Caller } from './types';
+// Last updated: 2026-01-13
 
 /** Subcommand builder for registration */
 export interface SubcommandBuilder {
@@ -119,60 +117,66 @@ export interface CommandBuilder {
     subcommand(name: string): SubcommandBuilder;
 }
 
-/**
- * Command registration API
- * @example
- * // Simple command
- * Commands.register('heal')
- *   .description('Heal a player')
- *   .argument('target', 'player')
- *   .executes(({ caller, args }) => {
- *     args.target.setHealth(args.target.maxHealth);
- *     caller.sendMessage(`Healed ${args.target.name}`);
- *   });
- *
- * // Command with optional arguments
- * Commands.register('give')
- *   .description('Give items to a player')
- *   .argument('item', 'item')
- *   .argument('count', 'int', 1)  // Optional, defaults to 1
- *   .executes(({ caller, args }) => {
- *     const count = args.count;  // Always present (defaults to 1)
- *     caller.sendMessage(`Giving ${count}x ${args.item}`);
- *   });
- *
- * // Subcommand with optional arguments
- * const cmd = Commands.register('structure')
- *   .description('Structure commands');
- *
- * cmd.subcommand('save')
- *   .argument('name', 'string')
- *   .argument('size', 'int', 48)          // Optional with default 48
- *   .argument('author', 'string', null)   // Optional with no default
- *   .executes(({ caller, args }) => {
- *     // args.name - always present (required)
- *     // args.size - always present (default 48)
- *     // args.author - undefined if not provided (null default)
- *     const author = args.author ?? 'Unknown';
- *     caller.sendMessage(`Saving ${args.name} (size=${args.size}, author=${author})`);
- *   });
- *
- * // Note: All required arguments must come BEFORE optional arguments
- * // This is INVALID: .argument('optional', 'int', 1).argument('required', 'string')
- */
-declare namespace Commands {
-    /**
-     * Register a new command
-     * @param name - Command name
-     * @returns Command builder
-     */
-    function register(name: string): CommandBuilder;
+declare module 'rhettjs/commands' {
+    import { Caller } from './types';
 
     /**
-     * Unregister a command
-     * @param name - Command name
+     * Command registration API
+     * @example
+     * import Commands from 'rhettjs/commands';
+     *
+     * // Simple command
+     * Commands.register('heal')
+     *   .description('Heal a player')
+     *   .argument('target', 'player')
+     *   .executes(({ caller, args }) => {
+     *     args.target.setHealth(args.target.maxHealth);
+     *     caller.sendMessage(`Healed ${args.target.name}`);
+     *   });
+     *
+     * // Command with optional arguments
+     * Commands.register('give')
+     *   .description('Give items to a player')
+     *   .argument('item', 'item')
+     *   .argument('count', 'int', 1)  // Optional, defaults to 1
+     *   .executes(({ caller, args }) => {
+     *     const count = args.count;  // Always present (defaults to 1)
+     *     caller.sendMessage(`Giving ${count}x ${args.item}`);
+     *   });
+     *
+     * // Subcommand with optional arguments
+     * const cmd = Commands.register('structure')
+     *   .description('Structure commands');
+     *
+     * cmd.subcommand('save')
+     *   .argument('name', 'string')
+     *   .argument('size', 'int', 48)          // Optional with default 48
+     *   .argument('author', 'string', null)   // Optional with no default
+     *   .executes(({ caller, args }) => {
+     *     // args.name - always present (required)
+     *     // args.size - always present (default 48)
+     *     // args.author - undefined if not provided (null default)
+     *     const author = args.author ?? 'Unknown';
+     *     caller.sendMessage(`Saving ${args.name} (size=${args.size}, author=${author})`);
+     *   });
+     *
+     * // Note: All required arguments must come BEFORE optional arguments
+     * // This is INVALID: .argument('optional', 'int', 1).argument('required', 'string')
      */
-    function unregister(name: string): void;
+    export const Commands: {
+        /**
+         * Register a new command
+         * @param name - Command name
+         * @returns Command builder
+         */
+        register(name: string): CommandBuilder;
+
+        /**
+         * Unregister a command
+         * @param name - Command name
+         */
+        unregister(name: string): void;
+    };
+
+    export default Commands;
 }
-
-export default Commands;

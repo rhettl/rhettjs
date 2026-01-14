@@ -51,7 +51,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Server API import works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -81,7 +81,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Server.on() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -107,7 +107,7 @@ class ServerAPIBindingsTest {
                 // Should not throw error
                 console.log('Server.off() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -130,7 +130,7 @@ class ServerAPIBindingsTest {
                 // Should not throw error
                 console.log('Server.once() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -165,7 +165,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Server properties work');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -186,7 +186,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Server.broadcast() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -207,7 +207,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Server.runCommand() works');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )
@@ -231,7 +231,7 @@ class ServerAPIBindingsTest {
 
                 console.log('Async event handlers work');
             """),
-            category = ScriptCategory.STARTUP,
+            category = ScriptCategory.SERVER,
             lastModified = System.currentTimeMillis(),
             status = ScriptStatus.LOADED
         )

@@ -48,18 +48,20 @@ class ModuleSystemTest {
         val script = ScriptInfo(
             name = "test-builtin-imports.js",
             path = createScript("startup", """
-                import World from 'World';
-                import Structure from 'Structure';
+                // STARTUP scripts have UNIVERSAL context (Store, NBT, StructureNbt, LargeStructureNbt)
+                // They do NOT have World, Commands, Server (server-only APIs)
                 import Store from 'Store';
                 import NBT from 'NBT';
+                import StructureNbt from 'StructureNbt';
+                import LargeStructureNbt from 'LargeStructureNbt';
 
-                console.log("World:", World.toString());
-                console.log("Structure:", Structure.toString());
                 console.log("Store:", Store.toString());
                 console.log("NBT:", NBT.toString());
+                console.log("StructureNbt:", StructureNbt.toString());
+                console.log("LargeStructureNbt:", LargeStructureNbt.toString());
 
-                if (!World || !Structure || !Store || !NBT) {
-                    throw new Error("Built-in APIs should be importable");
+                if (!Store || !NBT || !StructureNbt || !LargeStructureNbt) {
+                    throw new Error("Universal APIs should be importable in STARTUP scripts");
                 }
             """),
             category = ScriptCategory.STARTUP,
@@ -68,7 +70,7 @@ class ModuleSystemTest {
         )
 
         val result = GraalEngine.executeScript(script)
-        assertTrue(result is ScriptResult.Success, "Built-in imports should work")
+        assertTrue(result is ScriptResult.Success, "Built-in imports should work for universal APIs")
     }
 
     @Test
