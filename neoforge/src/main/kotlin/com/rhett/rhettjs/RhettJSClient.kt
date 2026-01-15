@@ -12,6 +12,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent
 import net.neoforged.neoforge.client.event.InputEvent
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent
 import net.neoforged.neoforge.common.NeoForge
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import org.lwjgl.glfw.GLFW
 import java.util.concurrent.CompletableFuture
 
@@ -39,6 +40,12 @@ class RhettJSClient(modEventBus: IEventBus) {
             val minecraft = Minecraft.getInstance()
             minecraft.player?.let { player ->
                 ClientEventManager.setPlayer(player)
+            }
+
+            // Register network payload handlers (client)
+            modEventBus.addListener<RegisterPayloadHandlersEvent> { event ->
+                com.rhett.rhettjs.network.NeoForgeNetworkHandler.register(event)
+                ConfigManager.debug("Registered RhettJS client network payloads")
             }
 
             // Register F3+T reload listener

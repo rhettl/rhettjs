@@ -81,6 +81,18 @@ class NetworkManager(
         logger.debug("Cleared all handlers")
     }
 
+    /**
+     * Clear all handlers for a specific channel.
+     * Useful for off() without specific handler.
+     *
+     * @param channel Channel name
+     */
+    fun clearChannel(channel: String) {
+        val namespacedChannel = applyNamespace(channel, defaultNamespace)
+        handlers.remove(namespacedChannel)
+        logger.debug("Cleared all handlers for channel: $namespacedChannel")
+    }
+
     // =====================================
     // Packet Routing
     // =====================================

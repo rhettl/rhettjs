@@ -31,6 +31,10 @@ class RhettJSFabricClient : ClientModInitializer {
 
         RhettJSCommon.LOGGER.info("[RhettJS] Client initialization starting")
 
+        // Initialize network packet handlers (client)
+        com.rhett.rhettjs.network.FabricNetworkHandler.initializeClient()
+        ConfigManager.debug("Initialized client network packet handlers")
+
         // Load client scripts
         ClientScriptInitializer.initializeClientScripts()
 

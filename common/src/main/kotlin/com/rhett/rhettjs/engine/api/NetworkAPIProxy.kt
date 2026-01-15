@@ -198,9 +198,7 @@ object NetworkAPIProxy {
      */
     private fun clearChannelHandlers(channel: String) {
         jsHandlers.remove(channel)
-        // Note: NetworkManager doesn't have a per-channel clear yet
-        // For now, we'll need to unregister each handler individually
-        // TODO: Add clearChannel() to NetworkManager
+        networkManager.clearChannel(channel)
     }
 
     // =====================================
@@ -209,41 +207,40 @@ object NetworkAPIProxy {
 
     /**
      * Send packet to server (CLIENT ONLY).
-     * This will be implemented in platform-specific code (Fabric/NeoForge).
+     * Delegates to platform-specific implementation (Fabric/NeoForge).
      */
     private fun sendToServer(channel: String, data: Value) {
         val dataMap = valueToMap(data)
         val packet = PacketData(channel, dataMap)
 
-        // TODO: Platform-specific implementation
-        // This needs to send actual network packet via Fabric/NeoForge networking
-        throw UnsupportedOperationException("sendToServer() not yet implemented - requires platform-specific networking")
+        NetworkPlatform.get().sendToServer(packet)
     }
 
     /**
      * Send packet to specific client (SERVER ONLY).
+     * Delegates to platform-specific implementation (Fabric/NeoForge).
      */
     private fun sendToClient(playerUuid: String, channel: String, data: Value) {
         val dataMap = valueToMap(data)
         val packet = PacketData(channel, dataMap)
 
-        // TODO: Platform-specific implementation
-        throw UnsupportedOperationException("sendToClient() not yet implemented - requires platform-specific networking")
+        NetworkPlatform.get().sendToClient(playerUuid, packet)
     }
 
     /**
      * Broadcast packet to all clients (SERVER ONLY).
+     * Delegates to platform-specific implementation (Fabric/NeoForge).
      */
     private fun broadcast(channel: String, data: Value) {
         val dataMap = valueToMap(data)
         val packet = PacketData(channel, dataMap)
 
-        // TODO: Platform-specific implementation
-        throw UnsupportedOperationException("broadcast() not yet implemented - requires platform-specific networking")
+        NetworkPlatform.get().broadcast(packet)
     }
 
     /**
      * Broadcast packet to clients in range (SERVER ONLY).
+     * Delegates to platform-specific implementation (Fabric/NeoForge).
      */
     private fun broadcastInRange(position: Value, range: Double, channel: String, data: Value) {
         val dataMap = valueToMap(data)
@@ -260,8 +257,7 @@ object NetworkAPIProxy {
             throw IllegalArgumentException("position must have x, y, z members")
         }
 
-        // TODO: Platform-specific implementation
-        throw UnsupportedOperationException("broadcastInRange() not yet implemented - requires platform-specific networking")
+        NetworkPlatform.get().broadcastInRange(posMap, range, packet)
     }
 
     // =====================================
