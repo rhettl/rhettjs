@@ -20,6 +20,7 @@ import net.neoforged.neoforge.event.server.ServerStartedEvent
 import net.neoforged.neoforge.event.server.ServerStartingEvent
 import net.neoforged.neoforge.event.server.ServerStoppingEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 
@@ -41,6 +42,10 @@ class RhettJS(modEventBus: IEventBus) {
 
             // Load startup scripts early (dimensions via rjs/data/ datapack)
             ScriptSystemInitializer.initializeStartupScripts()
+
+            // Register network payload handlers
+            modEventBus.register(NetworkPayloadHandler)
+            ConfigManager.debug("Registered network payload handler")
 
             // Register block event handlers
             NeoForge.EVENT_BUS.register(com.rhett.rhettjs.events.NeoForgeBlockEventHandler)
@@ -175,6 +180,17 @@ class RhettJS(modEventBus: IEventBus) {
                 com.rhett.rhettjs.events.ServerEventManager.triggerPlayerLeave(player)
                 ConfigManager.debug("Player disconnected: ${player.name.string}")
             }
+        }
+    }
+
+    /**
+     * Handles network payload registration.
+     */
+    object NetworkPayloadHandler {
+        @SubscribeEvent
+        fun onRegisterPayloadHandlers(event: RegisterPayloadHandlersEvent) {
+            com.rhett.rhettjs.network.NeoForgeNetworkHandler.register(event)
+            ConfigManager.debug("Registered RhettJS network payloads")
         }
     }
 }

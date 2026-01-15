@@ -1,6 +1,6 @@
 // RhettJS Core API Type Definitions (Barrel File)
-// Version: 0.3.0
-// Last updated: 2026-01-06
+// Version: 0.4.0
+// Last updated: 2026-01-15
 // Documentation: https://github.com/rhettjs/rhettjs
 
 // ============================================================================
@@ -15,6 +15,9 @@ export { default as Server } from './server';
 export { default as Client } from './client';
 export { default as World } from './world';
 export { default as UI } from './ui';
+export { default as Network } from './network';
+export { Server as RPCServer, Client as RPCClient } from './rpc';
+export { default as Events } from './events';
 export { StructureNbt, LargeStructureNbt } from './structure';
 export { WorldgenStructure } from './worldgen-structure';
 export { default as Script } from './script';
@@ -68,6 +71,9 @@ declare module 'rhettjs' {
     export { default as Client } from './client';
     export { default as World } from './world';
     export { default as UI } from './ui';
+    export { default as Network } from './network';
+    export { Server as RPCServer, Client as RPCClient } from './rpc';
+    export { default as Events } from './events';
     export { StructureNbt, LargeStructureNbt } from './structure';
     export { WorldgenStructure } from './worldgen-structure';
     export { default as Script } from './script';
@@ -106,6 +112,19 @@ declare module 'rhettjs/world' {
 
 declare module 'rhettjs/ui' {
     export { default } from './ui';
+}
+
+declare module 'rhettjs/network' {
+    export { default } from './network';
+}
+
+declare module 'rhettjs/rpc' {
+    export { Server, Client } from './rpc';
+    export { Server as default } from './rpc';
+}
+
+declare module 'rhettjs/events' {
+    export { default } from './events';
 }
 
 declare module 'rhettjs/structure' {
@@ -152,6 +171,14 @@ declare module 'World' {
 
 declare module 'UI' {
     export { default } from './ui';
+}
+
+declare module 'Network' {
+    export { default } from './network';
+}
+
+declare module 'Events' {
+    export { default } from './events';
 }
 
 declare module 'Structure' {

@@ -84,6 +84,8 @@ object GraalEngine {
     private var cachedUIAPI: Any? = null
     @Volatile
     private var cachedClientAPI: Any? = null
+    @Volatile
+    private var cachedNetworkAPI: Any? = null
 
     /**
      * Set the scripts base directory (called during initialization).
@@ -416,12 +418,14 @@ object GraalEngine {
         if (cachedLargeStructureNbtAPI == null) cachedLargeStructureNbtAPI = StructureAPIsProxy.createLargeStructureNbtAPI(context)
         if (cachedNbtAPI == null) cachedNbtAPI = NBTAPI.create()
         if (cachedStoreAPI == null) cachedStoreAPI = StoreAPIProxy.create()
+        if (cachedNetworkAPI == null) cachedNetworkAPI = NetworkAPIProxy.create(context)
 
         // Always inject universal APIs
         if (!bindings.hasMember("__builtin_StructureNbt")) bindings.putMember("__builtin_StructureNbt", cachedStructureNbtAPI!!)
         if (!bindings.hasMember("__builtin_LargeStructureNbt")) bindings.putMember("__builtin_LargeStructureNbt", cachedLargeStructureNbtAPI!!)
         if (!bindings.hasMember("__builtin_Store")) bindings.putMember("__builtin_Store", cachedStoreAPI!!)
         if (!bindings.hasMember("__builtin_NBT")) bindings.putMember("__builtin_NBT", cachedNbtAPI!!)
+        if (!bindings.hasMember("__builtin_Network")) bindings.putMember("__builtin_Network", cachedNetworkAPI!!)
 
         // Server-only APIs - cache, inject for SERVER, remove for others
         if (executionContext == ExecutionContext.SERVER) {

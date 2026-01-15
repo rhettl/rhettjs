@@ -36,6 +36,10 @@ class RhettJSFabric : ModInitializer {
 
         ConfigManager.debug("RhettJS initialization starting")
 
+        // Initialize network packet handlers
+        com.rhett.rhettjs.network.FabricNetworkHandler.initializeServer()
+        ConfigManager.debug("Initialized network packet handlers")
+
         // Load startup scripts early (dimensions via rjs/data/ datapack)
         ScriptSystemInitializer.initializeStartupScripts()
 
