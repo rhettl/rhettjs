@@ -66,12 +66,13 @@ data class PacketContext(
  * Used for JSON serialization with kotlinx.serialization.
  *
  * @property channel Channel name
- * @property data Packet payload as JsonElement (for flexible serialization)
+ * @property data Packet payload (any JSON-compatible data)
  * @property timestamp Unix timestamp
  */
 @Serializable
 data class RhettPacket(
     val channel: String,
-    val data: Map<String, @Serializable(with = JsonElementSerializer::class) JsonElement> = emptyMap(),
+    @Serializable(with = JsonElementMapSerializer::class)
+    val data: Map<String, Any?> = emptyMap(),
     val timestamp: Long = System.currentTimeMillis()
 )

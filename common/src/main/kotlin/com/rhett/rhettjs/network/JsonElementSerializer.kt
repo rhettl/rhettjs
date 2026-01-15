@@ -1,6 +1,8 @@
 package com.rhett.rhettjs.network
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -20,6 +22,26 @@ object JsonElementSerializer : KSerializer<JsonElement> {
 
     override fun deserialize(decoder: Decoder): JsonElement {
         return JsonElement.serializer().deserialize(decoder)
+    }
+}
+
+/**
+ * Custom serializer for Map<String, Any?> to JsonElement.
+ * Allows RhettPacket to accept plain Kotlin types and serialize them.
+ */
+object JsonElementMapSerializer : KSerializer<Map<String, Any?>> {
+    override val descriptor: SerialDescriptor = MapSerializer(String.serializer(), JsonElement.serializer()).descriptor
+
+    override fun serialize(encoder: Encoder, value: Map<String, Any?>) {
+        // Convert map values to JsonElement
+        val jsonMap = value.mapValues { it.value.toJsonElement() }
+        encoder.encodeSerializableValue(MapSerializer(String.serializer(), JsonElement.serializer()), jsonMap)
+    }
+
+    override fun deserialize(decoder: Decoder): Map<String, Any?> {
+        // Decode as JsonElement map, then convert back to Any?
+        val jsonMap = decoder.decodeSerializableValue(MapSerializer(String.serializer(), JsonElement.serializer()))
+        return jsonMap.mapValues { it.value.toKotlinType() }
     }
 }
 

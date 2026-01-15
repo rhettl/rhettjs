@@ -165,7 +165,7 @@ class NetworkManager(
     fun serializePacket(packet: PacketData): String {
         val rhettPacket = RhettPacket(
             channel = packet.channel,
-            data = packet.data.mapValues { it.value.toJsonElement() },
+            data = packet.data,
             timestamp = System.currentTimeMillis()
         )
         return json.encodeToString(rhettPacket)
@@ -184,7 +184,7 @@ class NetworkManager(
 
         return PacketData(
             channel = rhettPacket.channel,
-            data = rhettPacket.data.mapValues { it.value.toKotlinType() }
+            data = rhettPacket.data
         )
     }
 
