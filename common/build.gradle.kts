@@ -2,6 +2,7 @@ plugins {
     id("dev.architectury.loom")
     id("architectury-plugin")
     kotlin("jvm")
+    kotlin("plugin.serialization") version "1.9.22"
 }
 
 val minecraftVersion: String by rootProject
@@ -34,6 +35,9 @@ dependencies {
 
     // JSON5 parser
     implementation("de.marhali:json5-java:3.0.0")
+
+    // Kotlinx serialization for Network API
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     // GraalVM JavaScript engine
     // Note: We depend on the actual JAR artifacts, not the POM-only js-community
